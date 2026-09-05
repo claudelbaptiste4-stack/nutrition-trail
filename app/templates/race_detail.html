@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ race.name }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/chart.js@4.4.0/dist/chart.umd.js"></script>
+</head>
+<body>
+    <h1>{{ race.name }}</h1>
+    <p>{{ race.distance_km }} km — {{ race.elevation_gain_m }} m D+ — {{ race.temperature_c }}°C</p>
+
+    {% if points %}
+    <div id="map" style="height: 400px; border-radius: 8px;"></div>
+
+    <p id="cursorInfo" style="margin-top:16px; font-weight:500;">Survole le graphique pour voir le détail</p>
+    <canvas id="elevationChart" height="120"></canvas>
+
+    <script>
+        const points = {{ points | tojson }};
+        const profile = {{ profile | tojson }};
+
+        const map = L.map('map');
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        const line = L.polyline(points, {color: '#4a5d3a'}).addTo(map);
+        map.fitBounds(line.getBounds());
+
+        let cursorMarker = null;
+        const cursorInfo = document.getElementById('cursorInfo');
+
+        const ctx = document.getElementById('elevationChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: profile.map(p => p.km),
+                datasets: [{
+                    data: profile.map(p => p.elevation),
+                    borderColor: '#4a5d3a',
+                    backgroundColor: 'rgba(74,93,58,0.15)',
+                    fill: true,
+                    pointRadius: 0,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { title: { display: true, text: 'Distance (km)' } },
+                    y: { title: { display: true, text: 'Altitude (m)' } }
+                },
+                onHover: (event, elements) => {
+                    if (elements.length > 0) {
+                        const idx = elements[0].index;
+                        const p = profile[idx];
+                        cursorInfo.textContent = `Km ${p.km} — Altitude ${p.elevation} m`;
+                        if (cursorMarker) {
+                            cursorMarker.setLatLng([p.lat, p.lon]);
+                        } else {
+                            cursorMarker = L.circleMarker([p.lat, p.lon], {
+                                radius: 7,
+                                color: '#b5562b',
+                                fillColor: '#b5562b',
+                                fillOpacity: 1
+                            }).addTo(map);
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+    {% else %}
+    <p>Pas de trace GPX pour cette course.</p>
+    {% endif %}
+
+    <p><a href="/races/{{ race.id }}/plan">Créer / voir le plan nutritionnel →</a></p>
+    <p><a href="/races/view">← Retour aux courses</a></p>
+</body>
+</html>

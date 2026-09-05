@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Inscription</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Créer un compte</h1>
+    {% if error %}<p style="color:#b5562b;">{{ error }}</p>{% endif %}
+    <form action="/register" method="post">
+        <input type="email" name="email" placeholder="Email" required>
+        <input type="password" name="password" placeholder="Mot de passe (6 caractères min)" required>
+        <button type="submit">S'inscrire</button>
+    </form>
+    <p><a href="/login">Déjà un compte ? Se connecter</a></p>
+</body>
+</html>

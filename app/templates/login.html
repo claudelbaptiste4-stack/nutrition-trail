@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Connexion</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Connexion</h1>
+    {% if error %}<p style="color:#b5562b;">{{ error }}</p>{% endif %}
+    {% if message %}<p style="color:#4a5d3a;">{{ message }}</p>{% endif %}
+    <form action="/login" method="post">
+        <input type="email" name="email" placeholder="Email" required>
+        <input type="password" name="password" placeholder="Mot de passe" required>
+        <button type="submit">Se connecter</button>
+    </form>
+    <p><a href="/register">Pas encore de compte ? S'inscrire</a></p>
+</body>
+</html>

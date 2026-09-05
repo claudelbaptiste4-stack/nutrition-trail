@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mes courses</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Mes courses</h1>
+    <p><a href="/logout">Se déconnecter</a></p>
+
+    <form action="/races/add" method="post" enctype="multipart/form-data">
+        <input type="text" name="name" placeholder="Nom de la course" required>
+        <input type="number" step="0.1" name="distance_km" placeholder="Distance (km) - si pas de GPX">
+        <input type="number" step="1" name="elevation_gain_m" placeholder="D+ (m) - si pas de GPX">
+        <input type="number" step="1" name="duration_target_min" placeholder="Durée visée (min)">
+        <input type="number" step="0.1" name="temperature_c" placeholder="Température (°C)">
+        <label>Trace GPX (optionnel) : <input type="file" name="gpx_file" accept=".gpx"></label>
+        <button type="submit">Ajouter</button>
+    </form>
+
+    <hr>
+
+    <ul>
+        {% for race in races %}
+        <li style="display:flex; justify-content:space-between; align-items:center;">
+             <a href="/races/{{ race.id }}">
+                <strong>{{ race.name }}</strong>
+                — {{ race.distance_km }} km, {{ race.elevation_gain_m }} m D+, {{ race.duration_target_min }} min visées, {{ race.temperature_c }}°C
+            </a>
+            <form action="/races/{{ race.id }}/delete" method="post">
+                <button type="submit">Supprimer</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

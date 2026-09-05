@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Plan — {{ race.name }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Plan — {{ race.name }}</h1>
+    <p>{{ race.distance_km }} km — {{ race.elevation_gain_m }} m D+</p>
+
+    <div style="display:flex; gap:16px; margin:20px 0;">
+        <div><strong>{{ totals.carbs_g }}</strong> g glucides</div>
+        <div><strong>{{ totals.sodium_mg }}</strong> mg sodium</div>
+        <div><strong>{{ totals.caffeine_mg }}</strong> mg caféine</div>
+    </div>
+
+    <form action="/races/{{ race.id }}/plan/add" method="post">
+        <select name="product_id" required>
+            {% for product in products %}
+            <option value="{{ product.id }}">{{ product.name }} ({{ product.type }})</option>
+            {% endfor %}
+        </select>
+        <input type="number" step="0.1" name="position_km" placeholder="Au km">
+        <input type="number" step="1" name="position_min" placeholder="Au temps (min)">
+        <input type="number" step="1" name="quantity" placeholder="Quantité" value="1">
+        <button type="submit">Ajouter au plan</button>
+    </form>
+
+    <form action="/races/{{ race.id }}/plan/generate" method="post" style="margin-top:12px;">
+        <p>Ou génère un plan automatique :</p>
+        <input type="number" step="1" name="carbs_g_per_h" placeholder="Glucides visés (g/h)" value="60">
+        <input type="number" step="1" name="sodium_mg_per_h" placeholder="Sodium visé (mg/h)" value="500">
+        <button type="submit">Générer automatiquement</button>
+    </form>
+
+    <hr>
+    <h2>Ravitos</h2>
+    <form action="/races/{{ race.id }}/ravitos/add" method="post">
+        <input type="text" name="name" placeholder="Nom du ravito" required>
+        <input type="number" step="0.1" name="position_km" placeholder="Au km" required>
+        <button type="submit">Ajouter un ravito</button>
+    </form>
+    <ul>
+        {% for ravito in ravitos %}
+        <li style="display:flex; justify-content:space-between; align-items:center;">
+            <span>{{ ravito.name }} — km {{ ravito.position_km }}</span>
+            <form action="/races/{{ race.id }}/ravitos/remove/{{ ravito.id }}" method="post">
+                <button type="submit">Supprimer</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <hr>
+    <h2>Toutes les prises</h2>
+    <ul>
+        {% for item in plan_items %}
+        <li style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+            <span>
+                <strong>{{ item.time_display or "?" }}</strong> (km {{ item.position_km }})
+                — {{ item.product.name }} x{{ item.quantity }}
+                ({{ item.product.carbs_g }}g glucides, {{ item.product.sodium_mg }}mg sodium)
+            </span>
+            <span style="display:flex; gap:6px;">
+                <form action="/races/{{ race.id }}/plan/update/{{ item.id }}" method="post" style="display:flex; gap:4px;">
+                    <input type="number" step="any" name="position_min" value="{{ item.position_min }}" style="width:70px;">
+                    <button type="submit">Mettre à jour</button>
+                </form>
+                <form action="/races/{{ race.id }}/plan/remove/{{ item.id }}" method="post">
+                    <button type="submit">Supprimer</button>
+                </form>
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <hr>
+    <h2>Par tronçon entre ravitos</h2>
+    {% for segment in segments %}
+    <h3>{{ segment.start_name }} → {{ segment.end_name }} ({{ segment.start_km }} - {{ segment.end_km }} km)</h3>
+    <ul>
+        {% for item in segment.entries %}
+        <li>{{ item.time_display or "?" }} (km {{ item.position_km }}) — {{ item.product.name }} x{{ item.quantity }}</li>
+        {% else %}
+        <li>Rien de prévu sur ce tronçon</li>
+        {% endfor %}
+    </ul>
+    {% endfor %}
+
+    <hr>
+    <h2>Liste de courses</h2>
+    <ul>
+        {% for entry in shopping_list %}
+        <li>{{ entry.product.name }} — x{{ entry.quantity }}</li>
+        {% endfor %}
+    </ul>
+
+    <p><a href="/races/{{ race.id }}">← Retour à la course</a></p>
+</body>
+</html>

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Import produits</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Importer des produits (CSV)</h1>
+    <p>Le fichier doit avoir ces colonnes, dans n'importe quel ordre : <code>name,brand,type,carbs_g,sodium_mg,caffeine_mg,weight_g,volume_ml,allergens</code></p>
+    <p><code>type</code> doit être : gel, barre, boisson ou electrolytes. <code>weight_g</code>/<code>volume_ml</code>/<code>allergens</code> sont optionnels.</p>
+
+    <form action="/products/import" method="post" enctype="multipart/form-data">
+        <input type="file" name="csv_file" accept=".csv" required>
+        <button type="submit">Importer</button>
+    </form>
+
+    <p><a href="/products/view">← Retour aux produits</a></p>
+</body>
+</html>
