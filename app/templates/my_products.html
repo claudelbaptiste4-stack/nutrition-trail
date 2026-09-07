@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mes produits</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Mes produits</h1>
+    <p>Coche les produits que tu as chez toi ou dans ton sac. Ils seront proposés en priorité pour composer et générer tes plans.</p>
+    <form action="/my-products/update" method="post">
+        <ul style="list-style:none; padding:0;">
+            {% for product in products %}
+            <li style="padding:8px 0; border-bottom:1px solid #eee;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" name="product_ids" value="{{ product.id }}" {% if product.owned %}checked{% endif %}>
+                    <strong>{{ product.name }}</strong>{% if product.brand %} — {{ product.brand }}{% endif %} ({{ product.type }})
+                    — {{ product.carbs_g }}g glucides, {{ product.sodium_mg }}mg sodium
+                </label>
+            </li>
+            {% endfor %}
+        </ul>
+        <button type="submit">Enregistrer mes produits</button>
+    </form>
+    <p><a href="/races/view">← Retour aux courses</a></p>
+</body>
+</html>

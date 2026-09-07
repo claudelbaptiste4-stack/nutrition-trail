@@ -1,6 +1,4 @@
 import os
-import csv
-import io
 from fastapi import FastAPI, Request, Form, UploadFile, File
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
@@ -8,6 +6,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from app.database import supabase
 import gpxpy
+import csv
+import io
 
 app = FastAPI(title="Nutrition Trail")
 app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET"))
@@ -116,7 +116,6 @@ async def import_products(csv_file: UploadFile = File(...)):
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
 
-    count = 0
     for row in reader:
         supabase.table("products").insert({
             "name": row.get("name"),
@@ -128,10 +127,37 @@ async def import_products(csv_file: UploadFile = File(...)):
             "weight_g": float(row["weight_g"]) if row.get("weight_g") else None,
             "volume_ml": float(row["volume_ml"]) if row.get("volume_ml") else None
         }).execute()
-        count += 1
 
     return RedirectResponse(url="/products/view", status_code=303)
-    
+
+@app.get("/my-products")
+def my_products_view(request: Request):
+    user_id = current_user_id(request)
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+    products = supabase.table("products").select("*").execute().data
+    owned = supabase.table("user_products").select("product_id").eq("user_id", user_id).execute().data
+    owned_ids = {o["product_id"] for o in owned}
+    for p in products:
+        p["owned"] = p["id"] in owned_ids
+    return templates.TemplateResponse(
+        request=request,
+        name="my_products.html",
+        context={"products": products}
+    )
+
+@app.post("/my-products/update")
+async def my_products_update(request: Request):
+    user_id = current_user_id(request)
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+    form = await request.form()
+    product_ids = form.getlist("product_ids")
+    supabase.table("user_products").delete().eq("user_id", user_id).execute()
+    for pid in product_ids:
+        supabase.table("user_products").insert({"user_id": user_id, "product_id": int(pid)}).execute()
+    return RedirectResponse(url="/my-products", status_code=303)
+
 @app.get("/races/view")
 def view_races(request: Request):
     user_id = current_user_id(request)
@@ -259,9 +285,15 @@ def view_plan(request: Request, race_id: int):
         plan = insert_response.data[0]
 
     items = supabase.table("plan_items").select("*").eq("plan_id", plan["id"]).order("position_km").execute().data
-    products = supabase.table("products").select("*").execute().data
-    products_by_id = {p["id"]: p for p in products}
+    all_products = supabase.table("products").select("*").execute().data
+    products_by_id = {p["id"]: p for p in all_products}
     ravitos = supabase.table("ravitos").select("*").eq("race_id", race_id).order("position_km").execute().data
+
+    owned = supabase.table("user_products").select("product_id").eq("user_id", user_id).execute().data
+    owned_ids = {o["product_id"] for o in owned}
+    my_products = [p for p in all_products if p["id"] in owned_ids]
+    using_all_products = len(my_products) == 0
+    dropdown_products = my_products if my_products else all_products
 
     totals = {"carbs_g": 0, "sodium_mg": 0, "caffeine_mg": 0}
     plan_items_full = []
@@ -313,7 +345,8 @@ def view_plan(request: Request, race_id: int):
         name="plan.html",
         context={
             "race": race,
-            "products": products,
+            "products": dropdown_products,
+            "using_all_products": using_all_products,
             "plan_items": plan_items_full,
             "totals": totals,
             "ravitos": ravitos,
@@ -362,10 +395,15 @@ def remove_plan_item(race_id: int, item_id: int):
 
 @app.post("/races/{race_id}/plan/generate")
 def generate_plan(
+    request: Request,
     race_id: int,
     carbs_g_per_h: float = Form(60),
     sodium_mg_per_h: float = Form(500)
 ):
+    user_id = current_user_id(request)
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
     race = supabase.table("races").select("*").eq("id", race_id).execute().data[0]
     plan_response = supabase.table("plans").select("*").eq("race_id", race_id).execute()
     if plan_response.data:
@@ -375,7 +413,11 @@ def generate_plan(
 
     supabase.table("plan_items").delete().eq("plan_id", plan["id"]).execute()
 
-    products = supabase.table("products").select("*").execute().data
+    all_products = supabase.table("products").select("*").execute().data
+    owned = supabase.table("user_products").select("product_id").eq("user_id", user_id).execute().data
+    owned_ids = {o["product_id"] for o in owned}
+    products = [p for p in all_products if p["id"] in owned_ids] or all_products
+
     if not products or not race.get("duration_target_min") or not race.get("distance_km"):
         return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 

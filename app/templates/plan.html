@@ -14,7 +14,9 @@
         <div><strong>{{ totals.sodium_mg }}</strong> mg sodium</div>
         <div><strong>{{ totals.caffeine_mg }}</strong> mg caféine</div>
     </div>
-
+{% if using_all_products %}
+<p><em>Tu n'as pas encore sélectionné tes produits — tous les produits de la base sont proposés. <a href="/my-products">Choisir mes produits</a></em></p>
+{% endif %}
     <form action="/races/{{ race.id }}/plan/add" method="post">
         <select name="product_id" required>
             {% for product in products %}
