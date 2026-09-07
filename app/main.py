@@ -31,8 +31,10 @@ def current_user_id(request: Request):
 
 
 @app.get("/")
-def health_check():
-    return {"status": "ok"}
+def health_check(request: Request):
+    if current_user_id(request):
+        return RedirectResponse(url="/races/view", status_code=303)
+    return RedirectResponse(url="/login", status_code=303)
 
 @app.get("/register")
 def register_form(request: Request):
