@@ -7,7 +7,7 @@
 </head>
 <body>
     <h1>Mes courses</h1>
-    
+
     <p><a href="/my-products">Mes produits</a> · <a href="/logout">Se déconnecter</a></p>
   
     <form action="/races/add" method="post" enctype="multipart/form-data">
@@ -16,6 +16,7 @@
         <input type="number" step="1" name="elevation_gain_m" placeholder="D+ (m) - si pas de GPX">
         <input type="number" step="1" name="duration_target_min" placeholder="Durée visée (min)">
         <input type="number" step="0.1" name="temperature_c" placeholder="Température (°C)">
+        <input type="date" name="race_date" placeholder="Date de la course">
         <label>Trace GPX (optionnel) : <input type="file" name="gpx_file" accept=".gpx"></label>
         <button type="submit">Ajouter</button>
     </form>
