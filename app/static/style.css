@@ -62,3 +62,45 @@ li {
 li strong {
     font-size: 16px;
 }
+
+/* ===== Module Mobilité (couleurs neutres, à adapter plus tard) ===== */
+.mob-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.mob-filters input,
+.mob-filters select,
+.mob-filters button {
+    padding: 8px;
+    font-size: 16px;
+}
+
+.mob-card {
+    border: 1px solid #cccccc;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    max-width: 720px;
+}
+
+.mob-card h3 {
+    margin: 0 0 4px;
+}
+
+.mob-meta {
+    margin: 2px 0;
+    color: #555555;
+    font-size: 14px;
+}
+
+.mob-card details {
+    margin-top: 6px;
+}
+
+.mob-pages {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}

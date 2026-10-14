@@ -438,3 +438,85 @@ def generate_plan(
         }).execute()
 
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
+
+# ============================================================
+# Module Mobilité : bibliothèque d'exercices
+# À coller tout en bas de app/main.py (après la fonction generate_plan)
+# ============================================================
+from urllib.parse import urlencode
+
+MOBILITY_PAGE_SIZE = 40
+MOBILITY_ZONES = [
+    "Adducteurs", "Avant-bras et poignets", "Bas du dos et obliques", "Cervicales",
+    "Cheville", "Colonne thoracique", "Fessiers et hanches", "Fléchisseurs de hanche",
+    "Ischio-jambiers", "Pectoraux et grands dorsaux", "Pieds et tibial antérieur",
+    "Quadriceps", "Squat et mobilité globale", "Épaules",
+]
+MOBILITY_TYPES = {"actif": "Actif", "passif": "Passif"}
+MOBILITY_MOMENTS = {
+    "reveil": "Réveil",
+    "avant_sortie": "Avant sortie",
+    "apres_sortie": "Après sortie",
+    "soir": "Soir",
+    "jour_repos": "Jour de repos",
+    "pause_bureau": "Pause bureau",
+}
+MOBILITY_SPORTS = {"trail": "Trail", "velo": "Vélo"}
+
+
+@app.get("/mobility/library")
+def mobility_library(
+    request: Request,
+    zone: str = "",
+    kind: str = "",
+    moment: str = "",
+    sport: str = "",
+    q: str = "",
+    page: int = 1,
+):
+    user_id = current_user_id(request)
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
+    page = max(1, page)
+    query = supabase.table("mobility_exercises").select("*", count="exact")
+    if zone:
+        query = query.eq("zone", zone)
+    if kind:
+        query = query.eq("type", kind)
+    if moment:
+        query = query.contains("moments", [moment])
+    if sport:
+        query = query.contains("sports", [sport])
+    if q:
+        query = query.ilike("name", f"%{q}%")
+
+    offset = (page - 1) * MOBILITY_PAGE_SIZE
+    response = (
+        query.order("zone")
+        .order("name")
+        .range(offset, offset + MOBILITY_PAGE_SIZE - 1)
+        .execute()
+    )
+    total = response.count or 0
+    pages = max(1, -(-total // MOBILITY_PAGE_SIZE))
+
+    filters = {"zone": zone, "kind": kind, "moment": moment, "sport": sport, "q": q}
+    qs = urlencode({k: v for k, v in filters.items() if v})
+
+    return templates.TemplateResponse(
+        request=request,
+        name="mobility_library.html",
+        context={
+            "exercises": response.data,
+            "total": total,
+            "page": page,
+            "pages": pages,
+            "filters": filters,
+            "qs": qs,
+            "zones": MOBILITY_ZONES,
+            "types": MOBILITY_TYPES,
+            "moments": MOBILITY_MOMENTS,
+            "sports": MOBILITY_SPORTS,
+        },
+    )

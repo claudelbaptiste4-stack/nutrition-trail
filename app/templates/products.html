@@ -28,7 +28,7 @@
     <ul>
         {% for product in products %}
         <li>
-            <strong>{{ product.name }}</strong>{% if product.brand %} — {{ product.brand }}{% endif %} ({{ product.type }})
+            </strong><strong>{{ product.name }}</strong>{% if product.brand %} — {{ product.brand }}{% endif %} ({{ product.type }})
             — {{ product.carbs_g }}g glucides, {{ product.sodium_mg }}mg sodium, {{ product.caffeine_mg }}mg caféine
         </li>
         {% endfor %}
