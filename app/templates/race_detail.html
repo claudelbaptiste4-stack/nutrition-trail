@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ race.name }}</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/theme.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/chart.js@4.4.0/dist/chart.umd.js"></script>
@@ -79,5 +79,5 @@
 
     <p><a href="/races/{{ race.id }}/plan">Créer / voir le plan nutritionnel →</a></p>
     <p><a href="/races/view">← Retour aux courses</a></p>
-</body>
+{% include "_tabbar.html" %}</body>
 </html>

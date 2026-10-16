@@ -13,6 +13,8 @@ app = FastAPI(title="Nutrition Trail")
 app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET"))
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+from app.mobility import router as mobility_router
+app.include_router(mobility_router)
 
 
 def format_minutes(minutes):
@@ -30,55 +32,80 @@ def current_user_id(request: Request):
     return request.session.get("user_id")
 
 
+# 1) health_check (route "/")
 @app.get("/")
 def health_check(request: Request):
     if current_user_id(request):
-        return RedirectResponse(url="/races/view", status_code=303)
+        return RedirectResponse(url="/home", status_code=303)
     return RedirectResponse(url="/login", status_code=303)
+
 
 @app.get("/register")
 def register_form(request: Request):
     return templates.TemplateResponse(request=request, name="register.html", context={})
 
+
+# 2) POST /register
 @app.post("/register")
 def register(request: Request, email: str = Form(...), password: str = Form(...)):
     try:
-        supabase.auth.sign_up({"email": email, "password": password})
+        supabase_auth.auth.sign_up({"email": email, "password": password})
     except Exception as e:
         return templates.TemplateResponse(
             request=request, name="register.html", context={"error": str(e)}
         )
     return templates.TemplateResponse(
-        request=request, name="login.html",
-        context={"message": "Compte créé ! Connecte-toi."}
+        request=request,
+        name="login.html",
+        context={"message": "Compte créé ! Connecte-toi."},
     )
+
 
 @app.get("/login")
 def login_form(request: Request):
     return templates.TemplateResponse(request=request, name="login.html", context={})
 
+
+# 3) POST /login
 @app.post("/login")
 def login(request: Request, email: str = Form(...), password: str = Form(...)):
     try:
-        result = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        result = supabase_auth.auth.sign_in_with_password({"email": email, "password": password})
     except Exception:
         return templates.TemplateResponse(
-            request=request, name="login.html",
-            context={"error": "Email ou mot de passe incorrect"}
+            request=request,
+            name="login.html",
+            context={"error": "Email ou mot de passe incorrect"},
         )
     request.session["user_id"] = result.user.id
     request.session["email"] = result.user.email
-    return RedirectResponse(url="/races/view", status_code=303)
+    return RedirectResponse(url="/home", status_code=303)
+
 
 @app.get("/logout")
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)
 
+
+# 4) Route /home (placée juste après logout)
+@app.get("/home")
+def home(request: Request):
+    user_id = current_user_id(request)
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse(
+        request=request,
+        name="home.html",
+        context={"email": request.session.get("email")},
+    )
+
+
 @app.get("/products")
 def get_products():
     response = supabase.table("products").select("*").execute()
     return response.data
+
 
 @app.get("/products/view")
 def view_products(request: Request):
@@ -88,6 +115,7 @@ def view_products(request: Request):
         name="products.html",
         context={"products": response.data}
     )
+
 
 @app.post("/products/add")
 def add_product(
@@ -106,9 +134,11 @@ def add_product(
     }).execute()
     return RedirectResponse(url="/products/view", status_code=303)
 
+
 @app.get("/products/import")
 def import_products_form(request: Request):
     return templates.TemplateResponse(request=request, name="import_products.html", context={})
+
 
 @app.post("/products/import")
 async def import_products(csv_file: UploadFile = File(...)):
@@ -130,6 +160,7 @@ async def import_products(csv_file: UploadFile = File(...)):
 
     return RedirectResponse(url="/products/view", status_code=303)
 
+
 @app.get("/my-products")
 def my_products_view(request: Request):
     user_id = current_user_id(request)
@@ -146,6 +177,7 @@ def my_products_view(request: Request):
         context={"products": products}
     )
 
+
 @app.post("/my-products/update")
 async def my_products_update(request: Request):
     user_id = current_user_id(request)
@@ -158,6 +190,7 @@ async def my_products_update(request: Request):
         supabase.table("user_products").insert({"user_id": user_id, "product_id": int(pid)}).execute()
     return RedirectResponse(url="/my-products", status_code=303)
 
+
 @app.get("/races/view")
 def view_races(request: Request):
     user_id = current_user_id(request)
@@ -169,6 +202,7 @@ def view_races(request: Request):
         name="races.html",
         context={"races": response.data}
     )
+
 
 @app.post("/races/add")
 async def add_race(
@@ -204,6 +238,7 @@ async def add_race(
     }).execute()
     return RedirectResponse(url="/races/view", status_code=303)
 
+
 @app.post("/races/{race_id}/delete")
 def delete_race(request: Request, race_id: int):
     user_id = current_user_id(request)
@@ -211,6 +246,7 @@ def delete_race(request: Request, race_id: int):
         return RedirectResponse(url="/login", status_code=303)
     supabase.table("races").delete().eq("id", race_id).eq("user_id", user_id).execute()
     return RedirectResponse(url="/races/view", status_code=303)
+
 
 @app.get("/races/{race_id}")
 def race_detail(request: Request, race_id: int):
@@ -252,6 +288,7 @@ def race_detail(request: Request, race_id: int):
         context={"race": race, "points": points, "profile": profile}
     )
 
+
 @app.post("/races/{race_id}/ravitos/add")
 def add_ravito(race_id: int, name: str = Form(...), position_km: float = Form(...)):
     supabase.table("ravitos").insert({
@@ -261,10 +298,12 @@ def add_ravito(race_id: int, name: str = Form(...), position_km: float = Form(..
     }).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
+
 @app.post("/races/{race_id}/ravitos/remove/{ravito_id}")
 def remove_ravito(race_id: int, ravito_id: int):
     supabase.table("ravitos").delete().eq("id", ravito_id).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
+
 
 @app.get("/races/{race_id}/plan")
 def view_plan(request: Request, race_id: int):
@@ -355,6 +394,7 @@ def view_plan(request: Request, race_id: int):
         }
     )
 
+
 @app.post("/races/{race_id}/plan/add")
 def add_plan_item(
     race_id: int,
@@ -383,15 +423,18 @@ def add_plan_item(
     }).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
+
 @app.post("/races/{race_id}/plan/update/{item_id}")
 def update_plan_item_time(race_id: int, item_id: int, position_min: float = Form(...)):
     supabase.table("plan_items").update({"position_min": position_min}).eq("id", item_id).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
+
 @app.post("/races/{race_id}/plan/remove/{item_id}")
 def remove_plan_item(race_id: int, item_id: int):
     supabase.table("plan_items").delete().eq("id", item_id).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
+
 
 @app.post("/races/{race_id}/plan/generate")
 def generate_plan(
@@ -438,6 +481,7 @@ def generate_plan(
         }).execute()
 
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
+
 
 # ============================================================
 # Module Mobilité : bibliothèque d'exercices

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Test de mobilité · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+    <p><a href="/mobility">← Mobilité</a></p>
+    <p class="eyebrow">Test d'entrée</p>
+    <h1>Mesure ta mobilité</h1>
+
+    <section class="card">
+        <p class="muted">Il te faut un mètre ruban, un mur, un tapis et un siège ou une boîte réglable. Fais chaque mouvement lentement, sans rebond, et arrête-toi dès la première sensation d'étirement franche. En cas de douleur, stoppe. Ce test sert à suivre ta progression : ce n'est pas un diagnostic médical.</p>
+    </section>
+
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <form method="post" action="/mobility/test">
+        {% for t in tests %}
+        <section class="card">
+            <p class="eyebrow">Mesure {{ t.position }} sur {{ tests|length }}</p>
+            <h3>{{ t.name }}</h3>
+            <p class="muted">{{ help[t.code] }}</p>
+            <p class="muted">Matériel : {{ t.equipment }}. Mesure en cm : plus la valeur est {{ 'grande' if t.target_cm > t.worst_cm else 'petite' }}, meilleur est le résultat.</p>
+            <label>{{ 'Côté gauche (cm)' if t.per_side else 'Mesure (cm)' }}
+                <input type="number" step="0.1" name="{{ t.code }}_left" required>
+            </label>
+            {% if t.per_side %}
+            <label>Côté droit (cm)
+                <input type="number" step="0.1" name="{{ t.code }}_right" required>
+            </label>
+            {% endif %}
+        </section>
+        {% endfor %}
+        <button type="submit">Calculer mon score</button>
+    </form>
+
+{% include "_tabbar.html" %}
+</body>
+</html>

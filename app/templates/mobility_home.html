@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mobilité · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+    <p class="eyebrow">Mobilité</p>
+    <h1>Ton score</h1>
+
+    {% if assessment %}
+    <section class="card">
+        <p class="muted">Score moyen · test du {{ assessment_date }}</p>
+        <p class="score-big">{{ global_score|round|int }}<span>/100</span></p>
+        <div class="bar"><span class="level-{{ global_level }}" style="width: {{ global_score|round|int }}%"></span></div>
+        <p class="muted">{{ global_label }}</p>
+        <a class="btn btn-secondary" href="/mobility/test">Refaire le test</a>
+    </section>
+
+    <h2>Détail par zone</h2>
+    <section class="card">
+        {% for z in zones %}
+        <div class="zone-row">
+            <div class="zone-head">
+                <span class="zone-name">{{ z.name }}</span>
+                {% if z.score is not none %}
+                <span class="zone-score">{{ z.score|round|int }}</span>
+                {% else %}
+                <span class="zone-score muted">—</span>
+                {% endif %}
+            </div>
+            <div class="bar">
+                {% if z.score is not none %}
+                <span class="level-{{ z.level }}" style="width: {{ z.score|round|int }}%"></span>
+                {% endif %}
+            </div>
+            <p class="muted zone-note">
+                {{ z.label }}
+                {% if z.asymmetry > asymmetry_alert %} · écart gauche/droite de {{ z.asymmetry|round|int }} points{% endif %}
+            </p>
+        </div>
+        {% endfor %}
+    </section>
+    {% else %}
+    <section class="card">
+        <p class="eyebrow">Première étape</p>
+        <h3>Découvre ton score de mobilité</h3>
+        <p class="muted">Neuf mesures simples, environ 10 minutes, avec un mètre et un mur. Tu obtiens un score sur 100 pour chaque zone du corps, et des programmes adaptés.</p>
+        <a class="btn" href="/mobility/test">Faire le test</a>
+    </section>
+    {% endif %}
+
+    <h2>{{ 'Programmes pour toi' if assessment else 'Programmes du jour' }}</h2>
+    {% if not assessment %}
+    <p class="muted">Passe le test pour que ces programmes ciblent tes zones les plus raides.</p>
+    {% endif %}
+
+    <div class="program-grid">
+        {% for p in programs %}
+        <a class="card program-card accent-{{ p.accent }}" href="/mobility/program/{{ p.slug }}">
+            <p class="eyebrow">{{ p.eyebrow }}</p>
+            <h3>{{ p.title }}</h3>
+            <p class="muted">{{ p.description }}</p>
+            <span class="chip">{{ p.minutes }} min</span>
+            <span class="chip chip-neutral">{{ p.count }} exercice{{ 's' if p.count > 1 else '' }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
+    <p><a href="/mobility/library">Voir tous les exercices →</a></p>
+
+{% include "_tabbar.html" %}
+</body>
+</html>

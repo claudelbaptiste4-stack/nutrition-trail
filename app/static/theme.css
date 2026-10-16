@@ -1,0 +1,588 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+/* ============================================================
+   Thème « Dark Soft » : fond sombre, vert sauge, lavande, pêche
+   À charger APRÈS style.css pour que ces règles priment.
+   ============================================================ */
+:root {
+    --bg: #121212;
+    --surface: #1a1a1a;
+    --surface-2: #232323;
+    --border: #2e2e2e;
+    --text: #ececec;
+    --muted: #9b9b9b;
+    --sage: #94b49f;
+    --lavender: #c3b1e1;
+    --peach: #f2b5a8;
+    --field: #2b2b2b;
+    --field-border: #3d3d3d;
+    color-scheme: dark;
+}
+
+html {
+    background: var(--bg);
+}
+
+body {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 20px 16px 96px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+/* ---------- Texte ---------- */
+h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 8px 0 16px;
+}
+
+h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 20px 0 10px;
+}
+
+h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0 0 6px;
+}
+
+a {
+    color: var(--sage);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 20px 0;
+}
+
+label {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 8px 0;
+}
+
+summary {
+    cursor: pointer;
+    color: var(--sage);
+    font-weight: 500;
+}
+
+.error {
+    color: var(--peach);
+}
+
+.message {
+    color: var(--sage);
+}
+
+.brand {
+    margin: 0 0 18px;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.brand span {
+    color: var(--sage);
+}
+
+.muted {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.eyebrow {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sage);
+}
+
+/* ---------- Formulaires ---------- */
+input,
+select,
+textarea {
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 4px 6px 4px 0;
+    padding: 12px 14px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font: inherit;
+    font-size: 16px;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: #7d7d7d;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: 2px solid var(--sage);
+    outline-offset: 1px;
+    border-color: transparent;
+}
+
+input[type="file"] {
+    padding: 8px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+    width: auto;
+    accent-color: var(--sage);
+}
+
+button {
+    min-height: 44px;
+    margin: 4px 0;
+    padding: 12px 18px;
+    background: var(--sage);
+    color: #121212;
+    border: 0;
+    border-radius: 12px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+button:hover {
+    filter: brightness(1.08);
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+/* Boutons de suppression : contour pêche, plus discrets */
+form[action$="/delete"] button,
+form[action*="/remove"] button {
+    background: transparent;
+    color: var(--peach);
+    border: 1px solid var(--peach);
+}
+
+/* ---------- Tableaux ---------- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    padding: 8px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+}
+
+td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+canvas {
+    max-width: 100%;
+}
+
+/* ---------- Composants ---------- */
+.card {
+    margin-bottom: 14px;
+    padding: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+}
+
+.chip {
+    display: inline-block;
+    margin: 0 6px 6px 0;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--sage);
+    background: rgba(148, 180, 159, 0.12);
+    border: 1px solid rgba(148, 180, 159, 0.35);
+}
+
+.chip-lavender {
+    color: var(--lavender);
+    background: rgba(195, 177, 225, 0.12);
+    border-color: rgba(195, 177, 225, 0.35);
+}
+
+.chip-neutral {
+    color: var(--muted);
+    background: transparent;
+    border-color: var(--border);
+}
+
+/* ---------- Page d'accueil à deux choix ---------- */
+.choice-grid {
+    display: grid;
+    gap: 14px;
+    margin-top: 8px;
+}
+
+@media (min-width: 640px) {
+    .choice-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.choice-card {
+    display: block;
+    padding: 22px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.15s, transform 0.15s;
+}
+
+.choice-card:hover {
+    text-decoration: none;
+    transform: translateY(-2px);
+    border-color: var(--accent);
+}
+
+.choice-nutrition {
+    --accent: var(--lavender);
+    --accent-soft: rgba(195, 177, 225, 0.14);
+}
+
+.choice-mobility {
+    --accent: var(--sage);
+    --accent-soft: rgba(148, 180, 159, 0.14);
+}
+
+.choice-icon {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--accent-soft);
+}
+
+.choice-icon svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--accent);
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.choice-card h2 {
+    margin: 14px 0 6px;
+    font-size: 22px;
+}
+
+.choice-card p {
+    margin: 0 0 14px;
+    color: var(--muted);
+}
+
+.choice-cta {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* ---------- Bibliothèque d'exercices ---------- */
+.mob-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.mob-card {
+    max-width: none;
+    padding: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+}
+
+.mob-card h3 {
+    margin: 4px 0 10px;
+    font-size: 18px;
+}
+
+.mob-card details {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+.mob-pages {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+/* ---------- Barre d'onglets du bas ---------- */
+.tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    background: rgba(26, 26, 26, 0.96);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+}
+
+.tabbar a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 48px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+}
+
+.tabbar a.active {
+    color: var(--sage);
+}
+
+.tabbar svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* ---------- Boutons-liens ---------- */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 12px 18px;
+    background: var(--sage);
+    color: #121212;
+    border-radius: 12px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.btn:hover {
+    text-decoration: none;
+    filter: brightness(1.08);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--sage);
+    border: 1px solid var(--sage);
+}
+
+.chip-peach {
+    color: var(--peach);
+    background: rgba(242, 181, 168, 0.12);
+    border-color: rgba(242, 181, 168, 0.35);
+}
+
+/* ---------- Score et barres ---------- */
+.score-big {
+    margin: 4px 0 10px;
+    font-size: 56px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.score-big span {
+    margin-left: 4px;
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.bar {
+    height: 8px;
+    margin: 6px 0;
+    overflow: hidden;
+    background: var(--field);
+    border-radius: 4px;
+}
+
+.bar span {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+}
+
+.level-low {
+    background: var(--peach);
+}
+
+.level-mid {
+    background: var(--lavender);
+}
+
+.level-high,
+.level-none {
+    background: var(--sage);
+}
+
+.zone-row {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.zone-row:last-child {
+    border-bottom: 0;
+}
+
+.zone-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.zone-name {
+    font-weight: 500;
+}
+
+.zone-score {
+    font-weight: 700;
+}
+
+.zone-note {
+    margin: 2px 0 0;
+}
+
+/* ---------- Programmes ---------- */
+.program-grid {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+@media (min-width: 640px) {
+    .program-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.program-card {
+    display: block;
+    margin-bottom: 0;
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.15s, transform 0.15s;
+}
+
+.program-card:hover {
+    text-decoration: none;
+    transform: translateY(-2px);
+    border-color: var(--accent);
+}
+
+.program-card h3 {
+    margin: 4px 0 6px;
+    font-size: 18px;
+}
+
+.program-card p {
+    margin: 0 0 10px;
+}
+
+.program-card .eyebrow {
+    color: var(--accent);
+    margin: 0;
+}
+
+.accent-sage {
+    --accent: var(--sage);
+}
+
+.accent-lavender {
+    --accent: var(--lavender);
+}
+
+.accent-peach {
+    --accent: var(--peach);
+}
+
+/* ---------- Neutralise les anciens styles de style.css ---------- */
+html body h1 {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+html body form {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+html body input,
+html body select,
+html body textarea {
+    background: var(--field);
+    color: var(--text);
+    border: 1px solid var(--field-border);
+}
+
+html body button {
+    background: var(--sage);
+    color: #121212;
+    border: 0;
+}
+
+html body form[action$="/delete"] button,
+html body form[action*="/remove"] button {
+    background: transparent;
+    color: var(--peach);
+    border: 1px solid var(--peach);
+}
+
+html body a {
+    color: var(--sage);
+}

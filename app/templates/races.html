@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Mes courses</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/theme.css">
 </head>
 <body>
     <h1>Mes courses</h1>
 
-    <p><a href="/my-products">Mes produits</a> · <a href="/mobility/library">Mobilité</a> · <a href="/logout">Se déconnecter</a></p>
+    <p><a href="/my-products">Mes produits</a> · <a href="/mobility">Mobilité</a> · <a href="/logout">Se déconnecter</a></p>
   
     <form action="/races/add" method="post" enctype="multipart/form-data">
         <input type="text" name="name" placeholder="Nom de la course" required>
@@ -36,5 +36,5 @@
         </li>
         {% endfor %}
     </ul>
-</body>
+{% include "_tabbar.html" %}</body>
 </html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Accueil · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+    <p class="brand">Peak<span>Flex</span></p>
+    <p class="eyebrow">Bienvenue</p>
+    <h1>Que veux-tu faire ?</h1>
+
+    <div class="choice-grid">
+        <a class="choice-card choice-nutrition" href="/races/view">
+            <div class="choice-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v7a2 2 0 0 0 4 0V3"/><path d="M7 3v18"/><path d="M17 3c-2 2-3 5-3 8h3v10"/></svg>
+            </div>
+            <h2>Plan nutrition</h2>
+            <p>Prépare ton ravitaillement : glucides, sodium et caféine heure par heure pour ta course.</p>
+            <span class="choice-cta">Préparer une course →</span>
+        </a>
+
+        <a class="choice-card choice-mobility" href="/mobility">
+            <div class="choice-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 12 7 12 10 4 14 20 17 12 21 12"/></svg>
+            </div>
+            <h2>Mobilité</h2>
+            <p>Ton score de mobilité, et des programmes pour le matin, le soir et autour de tes sorties.</p>
+            <span class="choice-cta">Ouvrir la mobilité →</span>
+        </a>
+    </div>
+
+    <p class="muted">
+        Connecté : {{ request.session.get('email') }} · <a href="/logout">Se déconnecter</a>
+    </p>
+
+{% include "_tabbar.html" %}
+</body>
+</html>

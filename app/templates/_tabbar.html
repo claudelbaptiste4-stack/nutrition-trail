@@ -1,0 +1,17 @@
+{% if request.session.get('user_id') %}
+{% set path = request.url.path %}
+<nav class="tabbar" aria-label="Navigation principale">
+    <a href="/home" class="{{ 'active' if path == '/home' else '' }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span>Accueil</span>
+    </a>
+    <a href="/races/view" class="{{ 'active' if path.startswith('/races') or path.startswith('/products') or path.startswith('/my-products') else '' }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v7a2 2 0 0 0 4 0V3"/><path d="M7 3v18"/><path d="M17 3c-2 2-3 5-3 8h3v10"/></svg>
+        <span>Nutrition</span>
+    </a>
+    <a href="/mobility" class="{{ 'active' if path.startswith('/mobility') else '' }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 12 7 12 10 4 14 20 17 12 21 12"/></svg>
+        <span>Mobilité</span>
+    </a>
+</nav>
+{% endif %}

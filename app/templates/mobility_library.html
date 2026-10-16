@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bibliothèque d'exercices</title>
+    <title>Exercices de mobilité · PeakFlex</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
 </head>
 <body>
-    <p><a href="/races/view">← Mes courses</a></p>
-    <h1>Bibliothèque d'exercices</h1>
+    <p class="eyebrow">Mobilité</p>
+    <h1>Exercices</h1>
 
     <form method="get" action="/mobility/library" class="mob-filters">
         <input type="text" name="q" value="{{ filters.q }}" placeholder="Rechercher un exercice">
@@ -45,30 +46,32 @@
         <a href="/mobility/library">Réinitialiser</a>
     </form>
 
-    <p>{{ total }} exercice{{ 's' if total > 1 else '' }}</p>
+    <p class="muted">{{ total }} exercice{{ 's' if total > 1 else '' }}</p>
 
     {% if not exercises %}
     <p>Aucun exercice ne correspond à ces filtres.</p>
     {% endif %}
 
     {% for ex in exercises %}
-    <div class="mob-card">
+    <article class="card mob-card">
+        <p class="eyebrow">{{ types[ex.type] }}</p>
         <h3>{{ ex.name }}</h3>
-        <p class="mob-meta">
-            {{ ex.zone }} · {{ types[ex.type] }} · {{ ex.timer_seconds }} s{% if ex.per_side %} par côté{% endif %}
+        <div>
+            <span class="chip">{{ ex.zone }}</span>
+            <span class="chip chip-neutral">{{ ex.timer_seconds }} s{% if ex.per_side %} par côté{% endif %}</span>
+            {% for s in ex.sports %}
+            <span class="chip {{ 'chip-lavender' if s == 'velo' else 'chip-neutral' }}">{{ sports[s] }}</span>
+            {% endfor %}
+        </div>
+        <p class="muted">
+            {% for m in ex.moments %}{{ moments[m] }}{% if not loop.last %} · {% endif %}{% endfor %}
+            — {% if ex.equipment %}{{ ex.equipment }}{% else %}Aucun matériel{% endif %}
         </p>
-        <p class="mob-meta">
-            Moments :
-            {% for m in ex.moments %}{{ moments[m] }}{% if not loop.last %}, {% endif %}{% endfor %}
-            · Sport :
-            {% for s in ex.sports %}{{ sports[s] }}{% if not loop.last %}, {% endif %}{% endfor %}
-        </p>
-        <p class="mob-meta">{% if ex.equipment %}Matériel : {{ ex.equipment }}{% else %}Aucun matériel{% endif %}</p>
         <details>
-            <summary>Consigne</summary>
+            <summary>Instruction de réalisation</summary>
             <p>{{ ex.instruction }}</p>
         </details>
-    </div>
+    </article>
     {% endfor %}
 
     {% if pages > 1 %}
@@ -76,11 +79,13 @@
         {% if page > 1 %}
         <a href="/mobility/library?{{ qs }}{% if qs %}&{% endif %}page={{ page - 1 }}">← Précédent</a>
         {% endif %}
-        <span>Page {{ page }} / {{ pages }}</span>
+        <span class="muted">Page {{ page }} / {{ pages }}</span>
         {% if page < pages %}
         <a href="/mobility/library?{{ qs }}{% if qs %}&{% endif %}page={{ page + 1 }}">Suivant →</a>
         {% endif %}
     </p>
     {% endif %}
+
+{% include "_tabbar.html" %}
 </body>
 </html>

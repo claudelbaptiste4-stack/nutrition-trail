@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ program.title }} · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+    <p><a href="/mobility">← Mobilité</a></p>
+    <p class="eyebrow">{{ program.eyebrow }}</p>
+    <h1>{{ program.title }}</h1>
+    <p class="muted">{{ program.description }}</p>
+
+    {% if exercises %}
+    <p>
+        <span class="chip">{{ minutes }} min</span>
+        <span class="chip chip-neutral">{{ exercises|length }} exercice{{ 's' if exercises|length > 1 else '' }}</span>
+        <span class="chip chip-neutral">{{ 'Adapté à ton test' if personalized else 'Programme du jour' }}</span>
+    </p>
+
+    {% for ex in exercises %}
+    <article class="card">
+        <p class="eyebrow">Exercice {{ loop.index }} sur {{ exercises|length }}</p>
+        <h3>{{ ex.name }}</h3>
+        <div>
+            <span class="chip">{{ ex.zone }}</span>
+            <span class="chip chip-neutral">{{ ex.timer_seconds }} s{% if ex.per_side %} par côté{% endif %}</span>
+            {% if ex.equipment %}<span class="chip chip-neutral">{{ ex.equipment }}</span>{% endif %}
+        </div>
+        <details>
+            <summary>Instruction de réalisation</summary>
+            <p>{{ ex.instruction }}</p>
+        </details>
+    </article>
+    {% endfor %}
+
+    <p class="muted">Le lecteur avec minuteur arrive à la prochaine étape.</p>
+    {% else %}
+    <p>Aucun exercice disponible pour ce programme pour le moment.</p>
+    {% endif %}
+
+{% include "_tabbar.html" %}
+</body>
+</html>
