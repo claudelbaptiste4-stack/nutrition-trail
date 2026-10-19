@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Profil · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+    <p class="eyebrow">Profil</p>
+    <h1>Mes informations</h1>
+    <p class="muted">{{ request.session.get('email') }}</p>
+
+    {% if saved %}
+    <section class="card notice"><strong>Profil enregistré.</strong></section>
+    {% endif %}
+
+    <form method="post" action="/profile" class="stack">
+        <section class="card">
+            <h3>Informations personnelles</h3>
+            <label class="field"><span>Prénom</span>
+                <input type="text" name="first_name" maxlength="60" value="{{ profile.first_name or '' }}">
+            </label>
+            <label class="field"><span>Nom</span>
+                <input type="text" name="last_name" maxlength="60" value="{{ profile.last_name or '' }}">
+            </label>
+            <label class="field"><span>Date de naissance{% if age is not none %} · {{ age }} ans{% endif %}</span>
+                <input type="date" name="birth_date" value="{{ profile.birth_date or '' }}">
+            </label>
+            <label class="field"><span>Taille (cm)</span>
+                <input type="number" step="1" min="100" max="250" name="height_cm" value="{{ profile.height_cm|round|int if profile.height_cm else '' }}">
+            </label>
+            <label class="field"><span>Poids (kg)</span>
+                <input type="number" step="0.1" min="30" max="250" name="weight_kg" value="{{ profile.weight_kg or '' }}">
+            </label>
+            <p class="muted">Ces informations ne sont pas visibles par les autres utilisateurs.</p>
+        </section>
+
+        <section class="card">
+            <h3>Mes sports</h3>
+            <p class="muted">Les programmes d'activation et le calcul du score s'adaptent à tes sports.</p>
+            <div class="check-grid">
+                {% for key, label in sport_options %}
+                <label class="check"><input type="checkbox" name="sports" value="{{ key }}" {% if key in selected_sports %}checked{% endif %}> {{ label }}</label>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Matériel de mobilité</h3>
+            <p class="muted">Coche ce que tu as chez toi : les programmes ne proposeront que des exercices réalisables avec ce matériel.</p>
+            <div class="check-grid">
+                {% for key, label in equipment_options %}
+                <label class="check"><input type="checkbox" name="mobility_equipment" value="{{ key }}" {% if key in selected_equipment %}checked{% endif %}> {{ label }}</label>
+                {% endfor %}
+            </div>
+        </section>
+
+        <button type="submit">Enregistrer</button>
+    </form>
+
+    <section class="card">
+        <h3>Ma nutrition</h3>
+        {% if products %}
+        <p class="muted">Produits que tu as chez toi :</p>
+        <ul>
+            {% for p in products %}
+            <li>{{ p.name }}{% if p.brand %} <span class="muted">— {{ p.brand }}</span>{% endif %}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">Tu n'as encore indiqué aucun produit.</p>
+        {% endif %}
+        <a class="btn btn-secondary" href="/my-products">Modifier mes produits</a>
+    </section>
+
+    <p><a href="/logout">Se déconnecter</a></p>
+
+{% include "_tabbar.html" %}
+</body>
+</html>

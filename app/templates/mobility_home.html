@@ -64,7 +64,7 @@
             <p class="eyebrow">{{ p.eyebrow }}</p>
             <h3>{{ p.title }}</h3>
             <p class="muted">{{ p.description }}</p>
-            <span class="chip">{{ p.minutes }} min</span>
+            <span class="chip">{{ p.duration }}</span>
             <span class="chip chip-neutral">{{ p.count }} exercice{{ 's' if p.count > 1 else '' }}</span>
         </a>
         {% endfor %}

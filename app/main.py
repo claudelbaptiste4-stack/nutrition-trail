@@ -1,22 +1,61 @@
-import os
-from fastapi import FastAPI, Request, Form, UploadFile, File
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
-from app.database import supabase, supabase_auth
-import gpxpy
 import csv
 import io
+import os
+from urllib.parse import urlencode
 
-app = FastAPI(title="Nutrition Trail")
-app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET"))
+import gpxpy
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.database import supabase, supabase_auth
+from app.mobility import router as mobility_router
+from app.profile import router as profile_router
+
+# ------------------------------------------------------------
+# Application et sécurité de base
+# ------------------------------------------------------------
+SESSION_SECRET = os.environ.get("SESSION_SECRET")
+if not SESSION_SECRET:
+    raise RuntimeError("La variable d'environnement SESSION_SECRET est manquante.")
+
+# Render définit la variable RENDER : en ligne on exige HTTPS pour le cookie de session
+IS_PRODUCTION = bool(os.environ.get("RENDER"))
+
+app = FastAPI(title="PeakFlex")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    https_only=IS_PRODUCTION,
+    same_site="lax",
+    max_age=14 * 24 * 3600,
+)
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-from app.mobility import router as mobility_router
 app.include_router(mobility_router)
+app.include_router(profile_router)
 
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
+
+
+MAX_CSV_BYTES = 1_000_000
+MAX_CSV_ROWS = 500
+MAX_GPX_BYTES = 10_000_000
+PRODUCT_TYPES = {"gel", "barre", "boisson", "electrolytes"}
+
+
+# ------------------------------------------------------------
+# Outils
+# ------------------------------------------------------------
 def format_minutes(minutes):
     if minutes is None:
         return None
@@ -32,7 +71,37 @@ def current_user_id(request: Request):
     return request.session.get("user_id")
 
 
-# 1) health_check (route "/")
+def to_login():
+    return RedirectResponse(url="/login", status_code=303)
+
+
+def clean_number(value, low, high, default=0.0):
+    """Renvoie la valeur si elle est un nombre compris entre low et high, sinon la valeur par défaut."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number != number or not (low <= number <= high):
+        return default
+    return number
+
+
+def get_owned_race(user_id, race_id):
+    """Renvoie la course si elle appartient à l'utilisateur, sinon None."""
+    rows = supabase.table("races").select("*").eq("id", race_id).eq("user_id", user_id).execute().data
+    return rows[0] if rows else None
+
+
+def get_or_create_plan(race_id, mode):
+    rows = supabase.table("plans").select("*").eq("race_id", race_id).execute().data
+    if rows:
+        return rows[0]
+    return supabase.table("plans").insert({"race_id": race_id, "mode": mode}).execute().data[0]
+
+
+# ------------------------------------------------------------
+# Connexion et inscription
+# ------------------------------------------------------------
 @app.get("/")
 def health_check(request: Request):
     if current_user_id(request):
@@ -45,19 +114,24 @@ def register_form(request: Request):
     return templates.TemplateResponse(request=request, name="register.html", context={})
 
 
-# 2) POST /register
 @app.post("/register")
 def register(request: Request, email: str = Form(...), password: str = Form(...)):
     try:
-        supabase_auth.auth.sign_up({"email": email, "password": password})
-    except Exception as e:
+        result = supabase_auth.auth.sign_up({"email": email, "password": password})
+    except Exception:
         return templates.TemplateResponse(
-            request=request, name="register.html", context={"error": str(e)}
+            request=request, name="register.html",
+            context={"error": "Inscription impossible : vérifie ton e-mail et ton mot de passe (trop court, ou compte déjà existant)."}
         )
+    # Si Supabase ne demande pas de confirmation par e-mail, on connecte tout de suite
+    if result.session and result.user:
+        request.session.clear()
+        request.session["user_id"] = result.user.id
+        request.session["email"] = result.user.email
+        return RedirectResponse(url="/home", status_code=303)
     return templates.TemplateResponse(
-        request=request,
-        name="login.html",
-        context={"message": "Compte créé ! Connecte-toi."},
+        request=request, name="login.html",
+        context={"message": "Compte créé ! Connecte-toi."}
     )
 
 
@@ -66,17 +140,16 @@ def login_form(request: Request):
     return templates.TemplateResponse(request=request, name="login.html", context={})
 
 
-# 3) POST /login
 @app.post("/login")
 def login(request: Request, email: str = Form(...), password: str = Form(...)):
     try:
         result = supabase_auth.auth.sign_in_with_password({"email": email, "password": password})
     except Exception:
         return templates.TemplateResponse(
-            request=request,
-            name="login.html",
-            context={"error": "Email ou mot de passe incorrect"},
+            request=request, name="login.html",
+            context={"error": "Email ou mot de passe incorrect"}
         )
+    request.session.clear()
     request.session["user_id"] = result.user.id
     request.session["email"] = result.user.email
     return RedirectResponse(url="/home", status_code=303)
@@ -88,27 +161,28 @@ def logout(request: Request):
     return RedirectResponse(url="/login", status_code=303)
 
 
-# 4) Route /home (placée juste après logout)
 @app.get("/home")
 def home(request: Request):
-    user_id = current_user_id(request)
-    if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse(
-        request=request,
-        name="home.html",
-        context={"email": request.session.get("email")},
-    )
+    if not current_user_id(request):
+        return to_login()
+    return templates.TemplateResponse(request=request, name="home.html", context={})
 
 
+# ------------------------------------------------------------
+# Produits (base partagée, réservée aux utilisateurs connectés)
+# ------------------------------------------------------------
 @app.get("/products")
-def get_products():
+def get_products(request: Request):
+    if not current_user_id(request):
+        return to_login()
     response = supabase.table("products").select("*").execute()
-    return response.data
+    return JSONResponse(response.data)
 
 
 @app.get("/products/view")
 def view_products(request: Request):
+    if not current_user_id(request):
+        return to_login()
     response = supabase.table("products").select("*").execute()
     return templates.TemplateResponse(
         request=request,
@@ -119,44 +193,75 @@ def view_products(request: Request):
 
 @app.post("/products/add")
 def add_product(
+    request: Request,
     name: str = Form(...),
     type: str = Form(...),
     carbs_g: float = Form(0),
     sodium_mg: float = Form(0),
     caffeine_mg: float = Form(0)
 ):
+    if not current_user_id(request):
+        return to_login()
+    name = name.strip()[:120]
+    if not name or type not in PRODUCT_TYPES:
+        return RedirectResponse(url="/products/view", status_code=303)
     supabase.table("products").insert({
         "name": name,
         "type": type,
-        "carbs_g": carbs_g,
-        "sodium_mg": sodium_mg,
-        "caffeine_mg": caffeine_mg
+        "carbs_g": clean_number(carbs_g, 0, 1000),
+        "sodium_mg": clean_number(sodium_mg, 0, 20000),
+        "caffeine_mg": clean_number(caffeine_mg, 0, 2000)
     }).execute()
     return RedirectResponse(url="/products/view", status_code=303)
 
 
 @app.get("/products/import")
 def import_products_form(request: Request):
+    if not current_user_id(request):
+        return to_login()
     return templates.TemplateResponse(request=request, name="import_products.html", context={})
 
 
 @app.post("/products/import")
-async def import_products(csv_file: UploadFile = File(...)):
+async def import_products(request: Request, csv_file: UploadFile = File(...)):
+    if not current_user_id(request):
+        return to_login()
     content = await csv_file.read()
-    text = content.decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(text))
+    if len(content) > MAX_CSV_BYTES:
+        return RedirectResponse(url="/products/import", status_code=303)
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return RedirectResponse(url="/products/import", status_code=303)
 
-    for row in reader:
-        supabase.table("products").insert({
-            "name": row.get("name"),
-            "brand": row.get("brand") or None,
-            "type": row.get("type"),
-            "carbs_g": float(row["carbs_g"]) if row.get("carbs_g") else 0,
-            "sodium_mg": float(row["sodium_mg"]) if row.get("sodium_mg") else 0,
-            "caffeine_mg": float(row["caffeine_mg"]) if row.get("caffeine_mg") else 0,
-            "weight_g": float(row["weight_g"]) if row.get("weight_g") else None,
-            "volume_ml": float(row["volume_ml"]) if row.get("volume_ml") else None
-        }).execute()
+    def optional_number(value, high):
+        if value is None or str(value).strip() == "":
+            return None
+        number = clean_number(str(value).replace(",", "."), 0, high, default=None)
+        return number
+
+    rows = []
+    reader = csv.DictReader(io.StringIO(text))
+    for index, row in enumerate(reader):
+        if index >= MAX_CSV_ROWS:
+            break
+        name = (row.get("name") or "").strip()[:120]
+        product_type = (row.get("type") or "").strip()[:40]
+        if not name or not product_type:
+            continue
+        rows.append({
+            "name": name,
+            "brand": (row.get("brand") or "").strip()[:80] or None,
+            "type": product_type,
+            "carbs_g": optional_number(row.get("carbs_g"), 1000) or 0,
+            "sodium_mg": optional_number(row.get("sodium_mg"), 20000) or 0,
+            "caffeine_mg": optional_number(row.get("caffeine_mg"), 2000) or 0,
+            "weight_g": optional_number(row.get("weight_g"), 5000),
+            "volume_ml": optional_number(row.get("volume_ml"), 5000)
+        })
+
+    for start in range(0, len(rows), 100):
+        supabase.table("products").insert(rows[start:start + 100]).execute()
 
     return RedirectResponse(url="/products/view", status_code=303)
 
@@ -165,7 +270,7 @@ async def import_products(csv_file: UploadFile = File(...)):
 def my_products_view(request: Request):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
     products = supabase.table("products").select("*").execute().data
     owned = supabase.table("user_products").select("product_id").eq("user_id", user_id).execute().data
     owned_ids = {o["product_id"] for o in owned}
@@ -182,20 +287,33 @@ def my_products_view(request: Request):
 async def my_products_update(request: Request):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
     form = await request.form()
-    product_ids = form.getlist("product_ids")
+    valid_ids = {p["id"] for p in supabase.table("products").select("id").execute().data}
+    product_ids = set()
+    for pid in form.getlist("product_ids"):
+        try:
+            number = int(pid)
+        except (TypeError, ValueError):
+            continue
+        if number in valid_ids:
+            product_ids.add(number)
     supabase.table("user_products").delete().eq("user_id", user_id).execute()
-    for pid in product_ids:
-        supabase.table("user_products").insert({"user_id": user_id, "product_id": int(pid)}).execute()
+    if product_ids:
+        supabase.table("user_products").insert(
+            [{"user_id": user_id, "product_id": pid} for pid in sorted(product_ids)]
+        ).execute()
     return RedirectResponse(url="/my-products", status_code=303)
 
 
+# ------------------------------------------------------------
+# Courses
+# ------------------------------------------------------------
 @app.get("/races/view")
 def view_races(request: Request):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
     response = supabase.table("races").select("*").eq("user_id", user_id).execute()
     return templates.TemplateResponse(
         request=request,
@@ -216,16 +334,30 @@ async def add_race(
 ):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
+
+    name = name.strip()[:120]
+    if not name:
+        return RedirectResponse(url="/races/view", status_code=303)
+    distance_km = clean_number(distance_km, 0, 2000)
+    elevation_gain_m = clean_number(elevation_gain_m, 0, 50000)
+    duration_target_min = clean_number(duration_target_min, 0, 10000)
+    temperature_c = clean_number(temperature_c, -40, 60)
 
     gpx_data = None
     if gpx_file and gpx_file.filename:
         content = await gpx_file.read()
-        gpx_data = content.decode("utf-8")
-        gpx = gpxpy.parse(gpx_data)
-        distance_km = gpx.length_3d() / 1000
-        uphill, _ = gpx.get_uphill_downhill()
-        elevation_gain_m = uphill
+        if len(content) <= MAX_GPX_BYTES:
+            try:
+                text = content.decode("utf-8")
+                gpx = gpxpy.parse(text)
+                gpx_distance = gpx.length_3d() / 1000
+                uphill, _ = gpx.get_uphill_downhill()
+                distance_km = gpx_distance
+                elevation_gain_m = uphill
+                gpx_data = text
+            except Exception:
+                gpx_data = None
 
     supabase.table("races").insert({
         "name": name,
@@ -243,7 +375,7 @@ async def add_race(
 def delete_race(request: Request, race_id: int):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
     supabase.table("races").delete().eq("id", race_id).eq("user_id", user_id).execute()
     return RedirectResponse(url="/races/view", status_code=303)
 
@@ -252,12 +384,11 @@ def delete_race(request: Request, race_id: int):
 def race_detail(request: Request, race_id: int):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
 
-    response = supabase.table("races").select("*").eq("id", race_id).eq("user_id", user_id).execute()
-    if not response.data:
+    race = get_owned_race(user_id, race_id)
+    if not race:
         return RedirectResponse(url="/races/view", status_code=303)
-    race = response.data[0]
 
     points = []
     profile = []
@@ -289,19 +420,34 @@ def race_detail(request: Request, race_id: int):
     )
 
 
+# ------------------------------------------------------------
+# Ravitaillements et plan (chaque action vérifie que la course appartient à l'utilisateur)
+# ------------------------------------------------------------
 @app.post("/races/{race_id}/ravitos/add")
-def add_ravito(race_id: int, name: str = Form(...), position_km: float = Form(...)):
-    supabase.table("ravitos").insert({
-        "race_id": race_id,
-        "name": name,
-        "position_km": position_km
-    }).execute()
+def add_ravito(request: Request, race_id: int, name: str = Form(...), position_km: float = Form(...)):
+    user_id = current_user_id(request)
+    if not user_id:
+        return to_login()
+    if not get_owned_race(user_id, race_id):
+        return RedirectResponse(url="/races/view", status_code=303)
+    name = name.strip()[:80]
+    if name:
+        supabase.table("ravitos").insert({
+            "race_id": race_id,
+            "name": name,
+            "position_km": clean_number(position_km, 0, 2000)
+        }).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
 
 @app.post("/races/{race_id}/ravitos/remove/{ravito_id}")
-def remove_ravito(race_id: int, ravito_id: int):
-    supabase.table("ravitos").delete().eq("id", ravito_id).execute()
+def remove_ravito(request: Request, race_id: int, ravito_id: int):
+    user_id = current_user_id(request)
+    if not user_id:
+        return to_login()
+    if not get_owned_race(user_id, race_id):
+        return RedirectResponse(url="/races/view", status_code=303)
+    supabase.table("ravitos").delete().eq("id", ravito_id).eq("race_id", race_id).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
 
@@ -309,19 +455,13 @@ def remove_ravito(race_id: int, ravito_id: int):
 def view_plan(request: Request, race_id: int):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
 
-    race_response = supabase.table("races").select("*").eq("id", race_id).eq("user_id", user_id).execute()
-    if not race_response.data:
+    race = get_owned_race(user_id, race_id)
+    if not race:
         return RedirectResponse(url="/races/view", status_code=303)
-    race = race_response.data[0]
 
-    plan_response = supabase.table("plans").select("*").eq("race_id", race_id).execute()
-    if plan_response.data:
-        plan = plan_response.data[0]
-    else:
-        insert_response = supabase.table("plans").insert({"race_id": race_id, "mode": "manuel"}).execute()
-        plan = insert_response.data[0]
+    plan = get_or_create_plan(race_id, "manuel")
 
     items = supabase.table("plan_items").select("*").eq("plan_id", plan["id"]).order("position_km").execute().data
     all_products = supabase.table("products").select("*").execute().data
@@ -397,13 +537,22 @@ def view_plan(request: Request, race_id: int):
 
 @app.post("/races/{race_id}/plan/add")
 def add_plan_item(
+    request: Request,
     race_id: int,
     product_id: int = Form(...),
     position_km: float = Form(None),
     position_min: float = Form(None),
     quantity: float = Form(1)
 ):
-    race = supabase.table("races").select("*").eq("id", race_id).execute().data[0]
+    user_id = current_user_id(request)
+    if not user_id:
+        return to_login()
+    race = get_owned_race(user_id, race_id)
+    if not race:
+        return RedirectResponse(url="/races/view", status_code=303)
+    if not supabase.table("products").select("id").eq("id", product_id).execute().data:
+        return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
+
     pace = None
     if race.get("distance_km") and race.get("duration_target_min"):
         pace = race["duration_target_min"] / race["distance_km"]
@@ -413,26 +562,40 @@ def add_plan_item(
     if position_min is not None and position_km is None and pace:
         position_km = position_min / pace
 
-    plan = supabase.table("plans").select("*").eq("race_id", race_id).execute().data[0]
+    plan = get_or_create_plan(race_id, "manuel")
     supabase.table("plan_items").insert({
         "plan_id": plan["id"],
         "product_id": product_id,
-        "position_km": position_km or 0,
-        "position_min": position_min,
-        "quantity": quantity
+        "position_km": clean_number(position_km, 0, 2000) if position_km is not None else 0,
+        "position_min": clean_number(position_min, 0, 10000, default=None) if position_min is not None else None,
+        "quantity": clean_number(quantity, 0.1, 50, default=1)
     }).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
 
 @app.post("/races/{race_id}/plan/update/{item_id}")
-def update_plan_item_time(race_id: int, item_id: int, position_min: float = Form(...)):
-    supabase.table("plan_items").update({"position_min": position_min}).eq("id", item_id).execute()
+def update_plan_item_time(request: Request, race_id: int, item_id: int, position_min: float = Form(...)):
+    user_id = current_user_id(request)
+    if not user_id:
+        return to_login()
+    if not get_owned_race(user_id, race_id):
+        return RedirectResponse(url="/races/view", status_code=303)
+    plan = get_or_create_plan(race_id, "manuel")
+    value = clean_number(position_min, 0, 10000, default=None)
+    if value is not None:
+        supabase.table("plan_items").update({"position_min": value}).eq("id", item_id).eq("plan_id", plan["id"]).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
 
 @app.post("/races/{race_id}/plan/remove/{item_id}")
-def remove_plan_item(race_id: int, item_id: int):
-    supabase.table("plan_items").delete().eq("id", item_id).execute()
+def remove_plan_item(request: Request, race_id: int, item_id: int):
+    user_id = current_user_id(request)
+    if not user_id:
+        return to_login()
+    if not get_owned_race(user_id, race_id):
+        return RedirectResponse(url="/races/view", status_code=303)
+    plan = get_or_create_plan(race_id, "manuel")
+    supabase.table("plan_items").delete().eq("id", item_id).eq("plan_id", plan["id"]).execute()
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
 
@@ -445,14 +608,14 @@ def generate_plan(
 ):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
 
-    race = supabase.table("races").select("*").eq("id", race_id).execute().data[0]
-    plan_response = supabase.table("plans").select("*").eq("race_id", race_id).execute()
-    if plan_response.data:
-        plan = plan_response.data[0]
-    else:
-        plan = supabase.table("plans").insert({"race_id": race_id, "mode": "auto"}).execute().data[0]
+    race = get_owned_race(user_id, race_id)
+    if not race:
+        return RedirectResponse(url="/races/view", status_code=303)
+    plan = get_or_create_plan(race_id, "auto")
+
+    carbs_g_per_h = clean_number(carbs_g_per_h, 0, 200, default=60)
 
     supabase.table("plan_items").delete().eq("plan_id", plan["id"]).execute()
 
@@ -470,25 +633,24 @@ def generate_plan(
     time_step = race["duration_target_min"] / (n_intakes + 1)
     carbs_target = carbs_g_per_h * (interval_min / 60)
 
+    new_items = []
     for i in range(1, n_intakes + 1):
         best_product = min(products, key=lambda p: abs((p.get("carbs_g") or 0) - carbs_target))
-        supabase.table("plan_items").insert({
+        new_items.append({
             "plan_id": plan["id"],
             "product_id": best_product["id"],
             "position_km": round(distance_step * i, 1),
             "position_min": round(time_step * i, 1),
             "quantity": 1
-        }).execute()
+        })
+    supabase.table("plan_items").insert(new_items).execute()
 
     return RedirectResponse(url=f"/races/{race_id}/plan", status_code=303)
 
 
-# ============================================================
+# ------------------------------------------------------------
 # Module Mobilité : bibliothèque d'exercices
-# À coller tout en bas de app/main.py (après la fonction generate_plan)
-# ============================================================
-from urllib.parse import urlencode
-
+# ------------------------------------------------------------
 MOBILITY_PAGE_SIZE = 40
 MOBILITY_ZONES = [
     "Adducteurs", "Avant-bras et poignets", "Bas du dos et obliques", "Cervicales",
@@ -520,7 +682,7 @@ def mobility_library(
 ):
     user_id = current_user_id(request)
     if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+        return to_login()
 
     page = max(1, page)
     query = supabase.table("mobility_exercises").select("*", count="exact")

@@ -1,17 +1,19 @@
-"""Module Mobilité : accueil (score et programmes), test d'entrée, détail d'un programme.
+"""Module Mobilité : score, test d'entrée, programmes (5, 8 ou 10 min) et lecteur avec minuteur.
 
 Ce fichier se place dans app/mobility.py. Il est branché sur l'application
-principale avec deux lignes dans app/main.py (voir les instructions).
+principale avec deux lignes dans app/main.py (déjà faites à l'étape précédente).
 """
 import random
+import re
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.database import supabase
+from app.profile import get_profile, profile_equipment, profile_sports
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -19,27 +21,31 @@ templates = Jinja2Templates(directory="app/templates")
 # ------------------------------------------------------------
 # Réglages
 # ------------------------------------------------------------
+EXERCISE_SECONDS = 60         # chaque exercice dure 1 minute (30 s par côté s'il se fait des deux côtés)
+REST_SECONDS = 10             # pause entre deux exercices, pour voir le suivant (et avant le premier)
+DURATIONS = (5, 8, 10)        # durées proposées à l'utilisateur, en minutes
+DEFAULT_MINUTES = 8
 CACHE_SECONDS = 300           # le catalogue est relu toutes les 5 minutes au plus
-MAX_PER_ZONE = 2              # au plus 2 exercices par zone dans un programme
-FREE_EQUIPMENT = {"tapis", "mur", "chaise"}   # matériel supposé disponible pour tout le monde
+MAX_PER_ZONE = 1              # un seul exercice par zone (muscle) dans un programme ; assoupli seulement s'il manque d'exercices
+RECENT_SESSIONS = 3           # les exercices des 3 dernières séances d'un programme passent en dernier
 ASYMMETRY_ALERT = 15          # écart gauche-droite (en points) à signaler
 
 PROGRAMS = [
     {"slug": "matin", "title": "Mobilité du matin", "eyebrow": "Matin",
      "description": "Réveille tes articulations avant la journée.",
-     "moment": "reveil", "kind": "actif", "sport": None, "seconds": 480, "accent": "sage"},
+     "moment": "reveil", "kind": "actif", "sport": None, "accent": "sage"},
     {"slug": "soir", "title": "Étirements du soir", "eyebrow": "Soir",
      "description": "Détends les muscles sollicités et prépare une bonne récupération.",
-     "moment": "soir", "kind": "passif", "sport": None, "seconds": 600, "accent": "peach"},
+     "moment": "soir", "kind": "passif", "sport": None, "accent": "peach"},
     {"slug": "activation-course", "title": "Activation avant la course à pied", "eyebrow": "Avant la sortie · Course à pied",
      "description": "Prépare chevilles, hanches et fessiers avant de courir.",
-     "moment": "avant_sortie", "kind": "actif", "sport": "trail", "seconds": 300, "accent": "sage"},
+     "moment": "avant_sortie", "kind": "actif", "sport": "trail", "accent": "sage"},
     {"slug": "activation-velo", "title": "Activation avant le vélo", "eyebrow": "Avant la sortie · Vélo",
      "description": "Prépare hanches, dos et épaules avant de rouler.",
-     "moment": "avant_sortie", "kind": "actif", "sport": "velo", "seconds": 300, "accent": "lavender"},
+     "moment": "avant_sortie", "kind": "actif", "sport": "velo", "accent": "lavender"},
     {"slug": "recuperation", "title": "Récupération après l'effort", "eyebrow": "Après la sortie",
      "description": "Retour au calme et étirements après une sortie.",
-     "moment": "apres_sortie", "kind": "passif", "sport": None, "seconds": 480, "accent": "lavender"},
+     "moment": "apres_sortie", "kind": "passif", "sport": None, "accent": "lavender"},
 ]
 
 TEST_HELP = {
@@ -119,11 +125,50 @@ def format_date(iso_text):
         return ""
 
 
-def equipment_ok(equipment):
-    if not equipment:
-        return True
-    tokens = [t.strip().lower() for t in equipment.split(",")]
-    return all(t in FREE_EQUIPMENT for t in tokens)
+def weight_for(test, sports):
+    """Poids d'un test selon les sports pratiqués (le plus élevé si plusieurs)."""
+    weights = []
+    if "trail" in sports:
+        weights.append(test.get("weight_trail") or 1)
+    if "velo" in sports:
+        weights.append(test.get("weight_bike") or 1)
+    return max(weights) if weights else 1
+
+
+def required_equipment(text):
+    """Traduit le matériel noté sur un exercice en matériels du profil utilisateur."""
+    if not text:
+        return set()
+    needs = set()
+    for part in text.lower().split(","):
+        part = part.strip()
+        if not part or part == "aucun" or "facultatif" in part:
+            continue
+        if "rouleau" in part or "serviette roulée" in part:
+            needs.add("rouleau")
+        elif "sangle" in part or "serviette" in part:
+            needs.add("sangle")
+        if "balle" in part:
+            needs.add("balle")
+        if "pistolet" in part:
+            needs.add("pistolet")
+        if "élastique" in part or "ancrage" in part:
+            needs.add("elastique")
+        if "bâton" in part:
+            needs.add("baton")
+        if re.search(r"\bbarre\b", part):
+            needs.add("barre")
+        if "disque" in part or "poids" in part or "bouteille" in part:
+            needs.add("poids")
+        if "ballon" in part:
+            needs.add("ballon")
+        if "tapis" in part:
+            needs.add("tapis")
+        if re.search(r"\bmur\b", part):
+            needs.add("mur")
+        if re.search(r"chaise|caisse|banc|\blit\b|marche|step", part):
+            needs.add("chaise")
+    return needs
 
 
 def latest_assessment(user_id):
@@ -150,16 +195,57 @@ def latest_assessment(user_id):
     return assessment
 
 
-def build_program(program, user_id, assessment):
-    """Choisit les exercices d'un programme.
+def recent_by_slug(user_id):
+    """Exercices des dernières séances terminées, regroupés par programme."""
+    sessions = (
+        supabase.table("mobility_sessions")
+        .select("id, moment")
+        .eq("user_id", user_id)
+        .order("started_at", desc=True)
+        .limit(20)
+        .execute()
+        .data
+    )
+    if not sessions:
+        return {}
+    counts, keep = {}, []
+    for s in sessions:
+        slug = s.get("moment")
+        counts[slug] = counts.get(slug, 0) + 1
+        if counts[slug] <= RECENT_SESSIONS:
+            keep.append(s)
+    items = (
+        supabase.table("mobility_session_items")
+        .select("session_id, exercise_id")
+        .in_("session_id", [s["id"] for s in keep])
+        .execute()
+        .data
+    )
+    by_session = {}
+    for item in items:
+        by_session.setdefault(item["session_id"], set()).add(item["exercise_id"])
+    result = {}
+    for s in keep:
+        result.setdefault(s.get("moment"), set()).update(by_session.get(s["id"], set()))
+    return result
 
-    - filtre : moment, type (actif/passif), sport, matériel disponible ;
+
+def visible_programs(sports):
+    """Masque l'activation d'un sport que l'utilisateur ne pratique pas."""
+    return [p for p in PROGRAMS if not p["sport"] or p["sport"] in sports]
+
+
+def build_program(program, user_id, minutes, shuffle, sports, equipment, assessment, recent_ids):
+    """Choisit les exercices d'un programme (1 exercice = 1 minute, 10 s de pause entre deux).
+
+    - filtres : moment, type (actif/passif), sport, matériel disponible ;
     - priorité : plus la zone liée a un score bas (et un poids élevé), plus l'exercice remonte ;
-    - sans test, le choix change simplement chaque jour ;
-    - on remplit le temps visé, avec au plus MAX_PER_ZONE exercices par zone.
+    - les exercices faits lors des dernières séances de ce programme passent en dernier ;
+    - une seule fois la même zone dans un programme (sauf s'il manque d'exercices), jamais deux zones identiques à la suite ;
+    - le choix reste stable dans la journée, sauf si l'utilisateur demande d'autres exercices (shuffle).
     """
     cat = load_catalogue()
-    weights = {t["code"]: max(t.get("weight_trail") or 1, t.get("weight_bike") or 1) for t in cat["tests"]}
+    weights = {t["code"]: weight_for(t, sports) for t in cat["tests"]}
     priority = {}
     if assessment:
         for code, result in assessment["results"].items():
@@ -168,34 +254,73 @@ def build_program(program, user_id, assessment):
 
     candidates = []
     for ex in cat["exercises"]:
-        if program["moment"] not in (ex.get("moments") or []):
+        if program["moment"] not in (ex.get("moments") or []) or ex.get("type") != program["kind"]:
             continue
-        if ex.get("type") != program["kind"]:
+        ex_sports = set(ex.get("sports") or [])
+        if program["sport"] and program["sport"] not in ex_sports:
             continue
-        if program["sport"] and program["sport"] not in (ex.get("sports") or []):
+        if not ex_sports & set(sports):
             continue
-        if not equipment_ok(ex.get("equipment")) or not ex.get("duration_seconds"):
+        if not required_equipment(ex.get("equipment")) <= equipment:
             continue
         candidates.append(ex)
 
-    rng = random.Random(f"{user_id}-{program['slug']}-{date.today().isoformat()}")
+    rng = random.Random(f"{user_id}-{program['slug']}-{date.today().isoformat()}-{minutes}-{shuffle}")
     rng.shuffle(candidates)
 
-    def exercise_priority(ex):
-        return max((priority.get(code, 0) for code in cat["links"].get(ex["id"], [])), default=0)
+    def bucket(ex):
+        return round(max((priority.get(code, 0) for code in cat["links"].get(ex["id"], [])), default=0) / 20)
 
-    candidates.sort(key=lambda ex: -round(exercise_priority(ex) / 20))
+    candidates.sort(key=lambda ex: (ex["id"] in recent_ids, -bucket(ex)))
 
-    chosen, total, per_zone = [], 0, {}
-    for ex in candidates:
-        if per_zone.get(ex["zone"], 0) >= MAX_PER_ZONE:
-            continue
-        if total + ex["duration_seconds"] > program["seconds"]:
-            continue
-        chosen.append(ex)
-        total += ex["duration_seconds"]
-        per_zone[ex["zone"]] = per_zone.get(ex["zone"], 0) + 1
-    return chosen, total
+    count = exercise_count(minutes)
+    chosen, chosen_ids, per_zone = [], set(), {}
+    for cap in (MAX_PER_ZONE, MAX_PER_ZONE + 1, 99):
+        for ex in candidates:
+            if len(chosen) >= count:
+                break
+            if ex["id"] in chosen_ids or per_zone.get(ex["zone"], 0) >= cap:
+                continue
+            chosen.append(ex)
+            chosen_ids.add(ex["id"])
+            per_zone[ex["zone"]] = per_zone.get(ex["zone"], 0) + 1
+        if len(chosen) >= count:
+            break
+    return spread_zones(chosen)
+
+
+def exercise_count(minutes):
+    """Nombre d'exercices qui tiennent dans la durée choisie, pauses de REST_SECONDS comprises."""
+    return max(1, (minutes * 60 + REST_SECONDS) // (EXERCISE_SECONDS + REST_SECONDS))
+
+
+def program_seconds(count):
+    """Durée totale d'un programme : exercices + pauses entre eux (la pause avant le premier n'est pas comptée)."""
+    return count * EXERCISE_SECONDS + max(0, count - 1) * REST_SECONDS
+
+
+def duration_label(seconds):
+    minutes, rest = divmod(int(seconds), 60)
+    return f"{minutes} min" if rest == 0 else f"{minutes} min {rest:02d}"
+
+
+def spread_zones(items):
+    """Ordonne les exercices pour ne jamais enchaîner deux fois la même zone, quand c'est possible."""
+    remaining, ordered = list(items), []
+    while remaining:
+        last = ordered[-1]["zone"] if ordered else None
+        pick = next((ex for ex in remaining if ex["zone"] != last), remaining[0])
+        ordered.append(pick)
+        remaining.remove(pick)
+    return ordered
+
+
+def clean_minutes(value):
+    return value if value in DURATIONS else DEFAULT_MINUTES
+
+
+def find_program(slug):
+    return next((p for p in PROGRAMS if p["slug"] == slug), None)
 
 
 # ------------------------------------------------------------
@@ -207,7 +332,10 @@ def mobility_home(request: Request):
     if not user_id:
         return RedirectResponse(url="/login", status_code=303)
 
+    profile = get_profile(user_id)
+    sports, equipment = profile_sports(profile), profile_equipment(profile)
     assessment = latest_assessment(user_id)
+    recent = recent_by_slug(user_id)
     cat = load_catalogue()
 
     zones = []
@@ -226,19 +354,21 @@ def mobility_home(request: Request):
             })
 
     programs = []
-    for program in PROGRAMS:
-        chosen, total = build_program(program, user_id, assessment)
-        programs.append({**program, "count": len(chosen), "minutes": round(total / 60) if chosen else 0})
+    for program in visible_programs(sports):
+        chosen = build_program(program, user_id, DEFAULT_MINUTES, 0, sports, equipment, assessment, recent.get(program["slug"], set()))
+        programs.append({**program, "count": len(chosen), "duration": duration_label(program_seconds(len(chosen)))})
 
+    global_score = assessment.get("global_score") if assessment else None
+    global_label, global_level = level_of(global_score)
     return templates.TemplateResponse(
         request=request,
         name="mobility_home.html",
         context={
             "assessment": assessment,
             "assessment_date": format_date(assessment["taken_at"]) if assessment else "",
-            "global_score": assessment.get("global_score") if assessment else None,
-            "global_label": level_of(assessment.get("global_score") if assessment else None)[0],
-            "global_level": level_of(assessment.get("global_score") if assessment else None)[1],
+            "global_score": global_score,
+            "global_label": global_label,
+            "global_level": global_level,
             "zones": zones,
             "programs": programs,
             "asymmetry_alert": ASYMMETRY_ALERT,
@@ -247,27 +377,130 @@ def mobility_home(request: Request):
 
 
 @router.get("/mobility/program/{slug}")
-def mobility_program(request: Request, slug: str):
+def mobility_program(
+    request: Request,
+    slug: str,
+    minutes: int = Query(DEFAULT_MINUTES, alias="min"),
+    v: int = 0,
+    done: int = 0,
+):
     user_id = current_user_id(request)
     if not user_id:
         return RedirectResponse(url="/login", status_code=303)
-
-    program = next((p for p in PROGRAMS if p["slug"] == slug), None)
+    program = find_program(slug)
     if program is None:
         return RedirectResponse(url="/mobility", status_code=303)
 
-    assessment = latest_assessment(user_id)
-    chosen, total = build_program(program, user_id, assessment)
+    minutes = clean_minutes(minutes)
+    profile = get_profile(user_id)
+    chosen = build_program(
+        program, user_id, minutes, v, profile_sports(profile), profile_equipment(profile),
+        latest_assessment(user_id), recent_by_slug(user_id).get(slug, set()),
+    )
     return templates.TemplateResponse(
         request=request,
         name="mobility_program.html",
         context={
             "program": program,
             "exercises": chosen,
-            "minutes": round(total / 60) if chosen else 0,
-            "personalized": assessment is not None,
+            "minutes": minutes,
+            "durations": DURATIONS,
+            "shuffle": v,
+            "done": bool(done),
+            "duration_text": duration_label(program_seconds(len(chosen))),
+            "exercise_seconds": EXERCISE_SECONDS,
+            "rest_seconds": REST_SECONDS,
         },
     )
+
+
+@router.get("/mobility/play/{slug}")
+def mobility_play(
+    request: Request,
+    slug: str,
+    minutes: int = Query(DEFAULT_MINUTES, alias="min"),
+    v: int = 0,
+):
+    user_id = current_user_id(request)
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+    program = find_program(slug)
+    if program is None:
+        return RedirectResponse(url="/mobility", status_code=303)
+
+    minutes = clean_minutes(minutes)
+    profile = get_profile(user_id)
+    chosen = build_program(
+        program, user_id, minutes, v, profile_sports(profile), profile_equipment(profile),
+        latest_assessment(user_id), recent_by_slug(user_id).get(slug, set()),
+    )
+    if not chosen:
+        return RedirectResponse(url=f"/mobility/program/{slug}?min={minutes}&v={v}", status_code=303)
+
+    plan = [
+        {
+            "id": ex["id"],
+            "name": ex["name"],
+            "zone": ex["zone"],
+            "instruction": ex.get("instruction") or "",
+            "per_side": bool(ex.get("per_side")),
+        }
+        for ex in chosen
+    ]
+    return templates.TemplateResponse(
+        request=request,
+        name="mobility_play.html",
+        context={
+            "program": program,
+            "plan": plan,
+            "minutes": minutes,
+            "shuffle": v,
+            "exercise_seconds": EXERCISE_SECONDS,
+            "rest_seconds": REST_SECONDS,
+            "duration_text": duration_label(program_seconds(len(chosen))),
+        },
+    )
+
+
+@router.post("/mobility/session/complete")
+async def mobility_session_complete(request: Request):
+    user_id = current_user_id(request)
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
+    form = await request.form()
+    slug = str(form.get("slug") or "")
+    program = find_program(slug)
+    if program is None:
+        return RedirectResponse(url="/mobility", status_code=303)
+
+    try:
+        minutes = clean_minutes(int(form.get("minutes") or DEFAULT_MINUTES))
+    except ValueError:
+        minutes = DEFAULT_MINUTES
+    known = {ex["id"] for ex in load_catalogue()["exercises"]}
+    ids = [i for i in str(form.get("exercise_ids") or "").split(",") if i in known][:30]
+
+    if ids:
+        session = (
+            supabase.table("mobility_sessions")
+            .insert({
+                "user_id": user_id,
+                "source": "proposee",
+                "moment": slug,
+                "planned_seconds": program_seconds(len(ids)),
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .execute()
+            .data[0]
+        )
+        items = [
+            {"session_id": session["id"], "position": n, "exercise_id": ex_id,
+             "planned_seconds": EXERCISE_SECONDS, "completed": True}
+            for n, ex_id in enumerate(ids, 1)
+        ]
+        supabase.table("mobility_session_items").insert(items).execute()
+    return RedirectResponse(url=f"/mobility/program/{slug}?min={minutes}&done=1", status_code=303)
 
 
 @router.get("/mobility/test")
@@ -275,11 +508,10 @@ def mobility_test_form(request: Request):
     user_id = current_user_id(request)
     if not user_id:
         return RedirectResponse(url="/login", status_code=303)
-    tests = load_catalogue()["tests"]
     return templates.TemplateResponse(
         request=request,
         name="mobility_test.html",
-        context={"tests": tests, "help": TEST_HELP, "error": None},
+        context={"tests": load_catalogue()["tests"], "help": TEST_HELP, "error": None},
     )
 
 
@@ -291,6 +523,7 @@ async def mobility_test_submit(request: Request):
 
     form = await request.form()
     tests = load_catalogue()["tests"]
+    sports = profile_sports(get_profile(user_id))
 
     results = []
     weighted_total, weight_sum = 0.0, 0
@@ -315,7 +548,7 @@ async def mobility_test_submit(request: Request):
             "zone_score": zone_score,
             "asymmetry": asymmetry,
         })
-        weight = max(t.get("weight_trail") or 1, t.get("weight_bike") or 1)
+        weight = weight_for(t, sports)
         weighted_total += zone_score * weight
         weight_sum += weight
 
@@ -329,7 +562,7 @@ async def mobility_test_submit(request: Request):
     global_score = round(weighted_total / weight_sum, 1)
     assessment = (
         supabase.table("mobility_assessments")
-        .insert({"user_id": user_id, "sports": ["trail", "velo"], "global_score": global_score})
+        .insert({"user_id": user_id, "sports": sports, "global_score": global_score})
         .execute()
         .data[0]
     )

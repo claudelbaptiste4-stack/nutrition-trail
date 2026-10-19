@@ -58,7 +58,7 @@
         <h3>{{ ex.name }}</h3>
         <div>
             <span class="chip">{{ ex.zone }}</span>
-            <span class="chip chip-neutral">{{ ex.timer_seconds }} s{% if ex.per_side %} par côté{% endif %}</span>
+            <span class="chip chip-neutral">1 min{% if ex.per_side %} (30 s par côté){% endif %}</span>
             {% for s in ex.sports %}
             <span class="chip {{ 'chip-lavender' if s == 'velo' else 'chip-neutral' }}">{{ sports[s] }}</span>
             {% endfor %}

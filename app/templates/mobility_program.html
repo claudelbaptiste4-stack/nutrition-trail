@@ -13,11 +13,29 @@
     <h1>{{ program.title }}</h1>
     <p class="muted">{{ program.description }}</p>
 
+    {% if done %}
+    <section class="card notice">
+        <strong>Bravo, séance enregistrée.</strong>
+        <span class="muted">Voici un nouveau programme avec d'autres exercices.</span>
+    </section>
+    {% endif %}
+
+    <p class="muted">Durée du programme (pauses de 10 s entre les exercices comprises)</p>
+    <div class="pill-group">
+        {% for d in durations %}
+        <a class="pill {{ 'active' if d == minutes else '' }}" href="/mobility/program/{{ program.slug }}?min={{ d }}&v={{ shuffle }}">{{ d }} min</a>
+        {% endfor %}
+    </div>
+
     {% if exercises %}
     <p>
-        <span class="chip">{{ minutes }} min</span>
+        <span class="chip">{{ duration_text }}</span>
         <span class="chip chip-neutral">{{ exercises|length }} exercice{{ 's' if exercises|length > 1 else '' }}</span>
-        <span class="chip chip-neutral">{{ 'Adapté à ton test' if personalized else 'Programme du jour' }}</span>
+    </p>
+
+    <p>
+        <a class="btn" href="/mobility/play/{{ program.slug }}?min={{ minutes }}&v={{ shuffle }}">Lancer le programme</a>
+        <a class="btn btn-secondary" href="/mobility/program/{{ program.slug }}?min={{ minutes }}&v={{ shuffle + 1 }}">Autres exercices</a>
     </p>
 
     {% for ex in exercises %}
@@ -26,7 +44,7 @@
         <h3>{{ ex.name }}</h3>
         <div>
             <span class="chip">{{ ex.zone }}</span>
-            <span class="chip chip-neutral">{{ ex.timer_seconds }} s{% if ex.per_side %} par côté{% endif %}</span>
+            <span class="chip chip-neutral">1 min{% if ex.per_side %} (30 s par côté){% endif %}</span>
             {% if ex.equipment %}<span class="chip chip-neutral">{{ ex.equipment }}</span>{% endif %}
         </div>
         <details>
@@ -35,10 +53,8 @@
         </details>
     </article>
     {% endfor %}
-
-    <p class="muted">Le lecteur avec minuteur arrive à la prochaine étape.</p>
     {% else %}
-    <p>Aucun exercice disponible pour ce programme pour le moment.</p>
+    <p>Aucun exercice ne correspond à ton matériel pour ce programme. Ajoute du matériel dans ton <a href="/profile">profil</a>.</p>
     {% endif %}
 
 {% include "_tabbar.html" %}

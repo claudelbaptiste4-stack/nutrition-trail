@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ program.title }} · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body class="player-page">
+
+    <!-- Écran de départ -->
+    <section id="screen-start">
+        <p class="eyebrow">{{ program.eyebrow }}</p>
+        <h1>{{ program.title }}</h1>
+        <p class="muted">{{ plan|length }} exercice{{ 's' if plan|length > 1 else '' }} · {{ duration_text }}</p>
+        <p class="muted">Chaque exercice dure 1 minute. Quand il se fait des deux côtés, le minuteur passe automatiquement du côté gauche au côté droit. Entre deux exercices, {{ rest_seconds }} secondes de pause te laissent voir le suivant.</p>
+        <button type="button" id="btn-start">Commencer</button>
+        <p><a href="/mobility/program/{{ program.slug }}?min={{ minutes }}&v={{ shuffle }}">← Retour</a></p>
+    </section>
+
+    <!-- Écran de lecture -->
+    <section id="screen-play" hidden>
+        <div class="player-top">
+            <button type="button" class="icon-btn" id="btn-quit" aria-label="Quitter le programme">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+            <div>
+                <p class="eyebrow">{{ program.eyebrow }}</p>
+                <p class="player-name">{{ program.title }}</p>
+            </div>
+        </div>
+
+        <div class="progress" role="progressbar" aria-label="Progression du programme"><span id="progress-bar"></span></div>
+
+        <div class="card demo-box">Démonstration à venir</div>
+
+        <div class="card player-card" id="player-card">
+            <div class="ring-wrap">
+                <svg viewBox="0 0 100 100" aria-hidden="true">
+                    <circle class="ring-bg" cx="50" cy="50" r="44"/>
+                    <circle class="ring-fg" id="ring" cx="50" cy="50" r="44"/>
+                </svg>
+                <span class="ring-time" id="time">01:00</span>
+            </div>
+            <div class="player-info">
+                <p class="eyebrow" id="ex-count"></p>
+                <p class="player-ex" id="ex-name"></p>
+                <p class="muted" id="ex-side"></p>
+            </div>
+            <div class="player-controls">
+                <button type="button" class="icon-btn icon-btn-primary" id="btn-pause" aria-label="Pause"></button>
+                <button type="button" class="icon-btn" id="btn-next" aria-label="Passer à la suite">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14l9-7z"/><rect x="16" y="5" width="3" height="14" rx="1"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <p class="muted" id="next-up"></p>
+
+        <div class="card">
+            <p class="eyebrow">Zone ciblée</p>
+            <div><span class="chip" id="ex-zone"></span></div>
+            <hr>
+            <p class="eyebrow">Instruction de réalisation</p>
+            <p id="ex-instruction"></p>
+        </div>
+
+        <p><button type="button" class="btn-link" id="btn-prev">← Revenir en arrière</button></p>
+    </section>
+
+    <!-- Écran de fin -->
+    <section id="screen-end" hidden>
+        <p class="eyebrow">Programme terminé</p>
+        <h1>Bravo !</h1>
+        <p class="muted">{{ plan|length }} exercice{{ 's' if plan|length > 1 else '' }} · {{ duration_text }}</p>
+        <form method="post" action="/mobility/session/complete">
+            <input type="hidden" name="slug" value="{{ program.slug }}">
+            <input type="hidden" name="minutes" value="{{ minutes }}">
+            <input type="hidden" name="exercise_ids" value="{{ plan|map(attribute='id')|join(',') }}">
+            <button type="submit">Enregistrer et voir un nouveau programme</button>
+        </form>
+    </section>
+
+<script>
+(function () {
+    var plan = {{ plan|tojson }};
+    var EXERCISE_SECONDS = {{ exercise_seconds }};
+    var REST_SECONDS = {{ rest_seconds }};
+    var BACK_URL = "/mobility/program/{{ program.slug }}?min={{ minutes }}&v={{ shuffle }}";
+    var CIRC = 2 * Math.PI * 44;
+
+    var ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+    var ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>';
+
+    // Une « phase » = un décompte : une pause avant un exercice, ou un exercice (ou un côté d'un exercice)
+    var phases = [];
+    plan.forEach(function (ex, i) {
+        phases.push({ kind: "rest", ex: i, label: i === 0 ? "Prépare-toi" : "Repos", seconds: REST_SECONDS });
+        if (ex.per_side) {
+            phases.push({ kind: "work", ex: i, label: "Côté gauche", seconds: EXERCISE_SECONDS / 2 });
+            phases.push({ kind: "work", ex: i, label: "Côté droit", seconds: EXERCISE_SECONDS / 2 });
+        } else {
+            phases.push({ kind: "work", ex: i, label: "", seconds: EXERCISE_SECONDS });
+        }
+    });
+    var totalSeconds = phases.reduce(function (s, p) { return s + p.seconds; }, 0);
+
+    var current = 0;
+    var remaining = phases[0].seconds;
+    var running = false;
+    var endAt = 0;
+    var interval = null;
+    var audioCtx = null;
+    var wakeLock = null;
+
+    function el(id) { return document.getElementById(id); }
+    function pad(n) { return n < 10 ? "0" + n : "" + n; }
+    function fmt(sec) { return pad(Math.floor(sec / 60)) + ":" + pad(sec % 60); }
+
+    function beep(kind) {
+        var freq = kind === "rest" ? 440 : (kind === "end" ? 660 : 880);
+        var length = kind === "end" ? 0.4 : 0.15;
+        try {
+            if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+            var osc = audioCtx.createOscillator();
+            var gain = audioCtx.createGain();
+            osc.frequency.value = freq;
+            gain.gain.value = 0.15;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + length);
+        } catch (e) { /* le son est facultatif */ }
+        try { if (navigator.vibrate) { navigator.vibrate(kind === "end" ? 300 : 120); } } catch (e) { /* facultatif */ }
+    }
+
+    function elapsedSeconds() {
+        var done = 0;
+        for (var i = 0; i < current; i++) { done += phases[i].seconds; }
+        return done + (phases[current].seconds - remaining);
+    }
+
+    function render() {
+        var phase = phases[current];
+        var ex = plan[phase.ex];
+        var isRest = phase.kind === "rest";
+        el("player-card").className = "card player-card" + (isRest ? " is-rest" : "");
+        el("ex-count").textContent = (isRest ? "Prochain exercice : " : "Exercice ") + (phase.ex + 1) + " sur " + plan.length;
+        el("ex-name").textContent = ex.name;
+        el("ex-side").textContent = phase.label;
+        el("ex-zone").textContent = ex.zone;
+        el("ex-instruction").textContent = ex.instruction;
+        el("time").textContent = fmt(remaining);
+        el("ring").style.strokeDashoffset = String(CIRC * (1 - remaining / phase.seconds));
+        el("progress-bar").style.width = (elapsedSeconds() / totalSeconds * 100) + "%";
+        el("btn-pause").innerHTML = running ? ICON_PAUSE : ICON_PLAY;
+        el("btn-pause").setAttribute("aria-label", running ? "Pause" : "Reprendre");
+        var nextEx = plan[phase.ex + 1];
+        var text;
+        if (isRest) {
+            text = "Regarde la position : l'exercice démarre à la fin du décompte.";
+        } else if (phase.label === "Côté gauche") {
+            text = "Ensuite : côté droit";
+        } else {
+            text = nextEx ? "Ensuite : " + nextEx.name : "Dernier exercice";
+        }
+        el("next-up").textContent = text;
+    }
+
+    function startPhase() {
+        remaining = phases[current].seconds;
+        if (running) { endAt = Date.now() + remaining * 1000; }
+        render();
+    }
+
+    function finish() {
+        running = false;
+        clearInterval(interval);
+        releaseWakeLock();
+        beep("end");
+        el("screen-play").hidden = true;
+        el("screen-end").hidden = false;
+    }
+
+    function nextPhase() {
+        if (current + 1 >= phases.length) { finish(); return; }
+        current += 1;
+        startPhase();
+        beep(phases[current].kind === "rest" ? "rest" : "work");
+    }
+
+    function prevPhase() {
+        var phase = phases[current];
+        if (current > 0 && phase.seconds - remaining <= 3) { current -= 1; }
+        startPhase();
+    }
+
+    function tick() {
+        if (!running) { return; }
+        remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+        render();
+        if (remaining <= 0) { nextPhase(); }
+    }
+
+    function togglePause() {
+        if (running) {
+            running = false;
+        } else {
+            running = true;
+            endAt = Date.now() + remaining * 1000;
+        }
+        render();
+    }
+
+    function requestWakeLock() {
+        try {
+            if (navigator.wakeLock) {
+                navigator.wakeLock.request("screen").then(function (lock) { wakeLock = lock; }, function () {});
+            }
+        } catch (e) { /* facultatif */ }
+    }
+    function releaseWakeLock() {
+        try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) { /* facultatif */ }
+    }
+
+    el("ring").style.strokeDasharray = String(CIRC);
+
+    el("btn-start").addEventListener("click", function () {
+        el("screen-start").hidden = true;
+        el("screen-play").hidden = false;
+        running = true;
+        current = 0;
+        remaining = phases[0].seconds;
+        endAt = Date.now() + remaining * 1000;
+        requestWakeLock();
+        beep("rest");
+        render();
+        interval = setInterval(tick, 250);
+    });
+    el("btn-pause").addEventListener("click", togglePause);
+    el("btn-next").addEventListener("click", nextPhase);
+    el("btn-prev").addEventListener("click", prevPhase);
+    el("btn-quit").addEventListener("click", function () {
+        if (window.confirm("Quitter le programme ? La séance ne sera pas enregistrée.")) {
+            releaseWakeLock();
+            window.location.href = BACK_URL;
+        }
+    });
+})();
+</script>
+</body>
+</html>
