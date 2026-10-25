@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ program.name }} · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+    <p><a href="/mobility/programs">← Mes programmes</a></p>
+    <p class="eyebrow">Mon programme</p>
+    <h1>{{ program.name }}</h1>
+
+    {% if done %}
+    <section class="card notice"><strong>Bravo, séance enregistrée.</strong></section>
+    {% endif %}
+
+    <p>
+        <span class="chip">{{ duration }}</span>
+        <span class="chip chip-neutral">{{ items|length }} exercice{{ 's' if items|length > 1 else '' }} sur {{ max_items }}</span>
+    </p>
+    {% if items %}
+    <p><a class="btn" href="/mobility/programs/{{ program.id }}/play">Lancer le programme</a></p>
+    {% endif %}
+
+    <!-- Exercices du programme -->
+    <h2>Exercices du programme</h2>
+    {% if items %}
+    {% for item in items %}
+    <article class="card">
+        <p class="eyebrow">Exercice {{ loop.index }} sur {{ items|length }}</p>
+        <h3>{{ item.exercise.name }}</h3>
+        <p>
+            <span class="chip">{{ item.exercise.zone }}</span>
+            <span class="chip chip-neutral">1 min{% if item.exercise.per_side %} (30 s par côté){% endif %}</span>
+        </p>
+        <div class="row-actions">
+            {% if not loop.first %}
+            <form method="post" action="/mobility/programs/{{ program.id }}/move/{{ item.item_id }}">
+                <input type="hidden" name="direction" value="up">
+                <input type="hidden" name="zone" value="{{ filters.zone }}"><input type="hidden" name="kind" value="{{ filters.kind }}"><input type="hidden" name="q" value="{{ filters.q }}"><input type="hidden" name="page" value="{{ page }}">
+                <button type="submit" class="btn-small" aria-label="Monter">↑ Monter</button>
+            </form>
+            {% endif %}
+            {% if not loop.last %}
+            <form method="post" action="/mobility/programs/{{ program.id }}/move/{{ item.item_id }}">
+                <input type="hidden" name="direction" value="down">
+                <input type="hidden" name="zone" value="{{ filters.zone }}"><input type="hidden" name="kind" value="{{ filters.kind }}"><input type="hidden" name="q" value="{{ filters.q }}"><input type="hidden" name="page" value="{{ page }}">
+                <button type="submit" class="btn-small" aria-label="Descendre">↓ Descendre</button>
+            </form>
+            {% endif %}
+            <form method="post" action="/mobility/programs/{{ program.id }}/remove/{{ item.item_id }}">
+                <input type="hidden" name="zone" value="{{ filters.zone }}"><input type="hidden" name="kind" value="{{ filters.kind }}"><input type="hidden" name="q" value="{{ filters.q }}"><input type="hidden" name="page" value="{{ page }}">
+                <button type="submit" class="btn-small btn-danger">Retirer</button>
+            </form>
+        </div>
+    </article>
+    {% endfor %}
+    {% else %}
+    <section class="card"><p class="muted">Ce programme est vide. Ajoute des exercices avec la recherche ci-dessous.</p></section>
+    {% endif %}
+
+    <!-- Ajouter des exercices -->
+    <h2>Ajouter des exercices</h2>
+    {% if full %}
+    <p class="muted">Le programme a atteint {{ max_items }} exercices. Retire-en un pour en ajouter.</p>
+    {% endif %}
+
+    <form method="get" action="/mobility/programs/{{ program.id }}" class="mob-filters">
+        <input type="text" name="q" value="{{ filters.q }}" placeholder="Rechercher un exercice">
+        <select name="zone">
+            <option value="">Toutes les zones</option>
+            {% for z in zones %}
+            <option value="{{ z }}" {% if z == filters.zone %}selected{% endif %}>{{ z }}</option>
+            {% endfor %}
+        </select>
+        <select name="kind">
+            <option value="">Actif et passif</option>
+            {% for key, label in types.items() %}
+            <option value="{{ key }}" {% if key == filters.kind %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Filtrer</button>
+        <a href="/mobility/programs/{{ program.id }}">Réinitialiser</a>
+    </form>
+
+    <p class="muted">{{ total }} exercice{{ 's' if total > 1 else '' }}</p>
+
+    {% for ex in results %}
+    <article class="card">
+        <p class="eyebrow">{{ types[ex.type] }}</p>
+        <h3>{{ ex.name }}</h3>
+        <div>
+            <span class="chip">{{ ex.zone }}</span>
+            <span class="chip chip-neutral">1 min{% if ex.per_side %} (30 s par côté){% endif %}</span>
+            {% if ex.equipment %}<span class="chip chip-neutral">{{ ex.equipment }}</span>{% endif %}
+        </div>
+        <details>
+            <summary>Instruction de réalisation</summary>
+            <p>{{ ex.instruction }}</p>
+        </details>
+        {% if ex.id in in_program %}
+        <p class="muted">Déjà dans le programme</p>
+        {% elif not full %}
+        <form method="post" action="/mobility/programs/{{ program.id }}/add">
+            <input type="hidden" name="exercise_id" value="{{ ex.id }}">
+            <input type="hidden" name="zone" value="{{ filters.zone }}"><input type="hidden" name="kind" value="{{ filters.kind }}"><input type="hidden" name="q" value="{{ filters.q }}"><input type="hidden" name="page" value="{{ page }}">
+            <button type="submit">Ajouter au programme</button>
+        </form>
+        {% endif %}
+    </article>
+    {% endfor %}
+
+    {% if pages > 1 %}
+    <p class="mob-pages">
+        {% if page > 1 %}
+        <a href="/mobility/programs/{{ program.id }}?{{ qs }}{% if qs %}&{% endif %}page={{ page - 1 }}">← Précédent</a>
+        {% endif %}
+        <span class="muted">Page {{ page }} / {{ pages }}</span>
+        {% if page < pages %}
+        <a href="/mobility/programs/{{ program.id }}?{{ qs }}{% if qs %}&{% endif %}page={{ page + 1 }}">Suivant →</a>
+        {% endif %}
+    </p>
+    {% endif %}
+
+    <!-- Nom et suppression -->
+    <form method="post" action="/mobility/programs/{{ program.id }}/rename" class="stack">
+        <section class="card">
+            <h3>Renommer</h3>
+            <label class="field"><span>Nom du programme</span>
+                <input type="text" name="name" maxlength="60" value="{{ program.name }}" required>
+            </label>
+            <button type="submit">Enregistrer le nom</button>
+        </section>
+    </form>
+
+    <form method="post" action="/mobility/programs/{{ program.id }}/delete" onsubmit="return confirm('Supprimer ce programme ?');">
+        <button type="submit" class="btn-danger">Supprimer ce programme</button>
+    </form>
+
+{% include "_tabbar.html" %}
+</body>
+</html>

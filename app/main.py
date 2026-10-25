@@ -13,6 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import supabase, supabase_auth
 from app.mobility import router as mobility_router
 from app.profile import router as profile_router
+from app.programs import router as programs_router
 
 # ------------------------------------------------------------
 # Application et sécurité de base
@@ -36,6 +37,7 @@ templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(mobility_router)
 app.include_router(profile_router)
+app.include_router(programs_router)
 
 
 @app.middleware("http")

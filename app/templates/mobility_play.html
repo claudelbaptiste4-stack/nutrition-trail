@@ -16,7 +16,7 @@
         <p class="muted">{{ plan|length }} exercice{{ 's' if plan|length > 1 else '' }} · {{ duration_text }}</p>
         <p class="muted">Chaque exercice dure 1 minute. Quand il se fait des deux côtés, le minuteur passe automatiquement du côté gauche au côté droit. Entre deux exercices, {{ rest_seconds }} secondes de pause te laissent voir le suivant.</p>
         <button type="button" id="btn-start">Commencer</button>
-        <p><a href="/mobility/program/{{ program.slug }}?min={{ minutes }}&v={{ shuffle }}">← Retour</a></p>
+        <p><a href="{{ back_url }}">← Retour</a></p>
     </section>
 
     <!-- Écran de lecture -->
@@ -77,8 +77,9 @@
         <form method="post" action="/mobility/session/complete">
             <input type="hidden" name="slug" value="{{ program.slug }}">
             <input type="hidden" name="minutes" value="{{ minutes }}">
+            {% if program_id %}<input type="hidden" name="program_id" value="{{ program_id }}">{% endif %}
             <input type="hidden" name="exercise_ids" value="{{ plan|map(attribute='id')|join(',') }}">
-            <button type="submit">Enregistrer et voir un nouveau programme</button>
+            <button type="submit">{{ 'Enregistrer la séance' if program_id else 'Enregistrer et voir un nouveau programme' }}</button>
         </form>
     </section>
 
@@ -87,7 +88,7 @@
     var plan = {{ plan|tojson }};
     var EXERCISE_SECONDS = {{ exercise_seconds }};
     var REST_SECONDS = {{ rest_seconds }};
-    var BACK_URL = "/mobility/program/{{ program.slug }}?min={{ minutes }}&v={{ shuffle }}";
+    var BACK_URL = {{ back_url|tojson }};
     var CIRC = 2 * Math.PI * 44;
 
     var ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';

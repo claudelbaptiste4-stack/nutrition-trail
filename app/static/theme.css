@@ -782,6 +782,44 @@ html body .btn-link {
     color: var(--sage);
 }
 
+/* ---------- Éditeur de programme ---------- */
+.row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.row-actions form {
+    margin: 0;
+}
+
+.btn-small {
+    min-height: 40px;
+    padding: 8px 14px;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--field-border);
+    font-size: 14px;
+}
+
+.btn-danger {
+    background: transparent;
+    color: var(--peach);
+    border: 1px solid var(--peach);
+}
+
+html body .btn-small {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--field-border);
+}
+
+html body .btn-danger {
+    background: transparent;
+    color: var(--peach);
+    border: 1px solid var(--peach);
+}
+
 /* ---------- Neutralise les anciens styles de style.css ---------- */
 html body h1 {
     border-bottom: 0;

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mes programmes · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+    <p><a href="/mobility">← Mobilité</a></p>
+    <p class="eyebrow">Mobilité</p>
+    <h1>Mes programmes</h1>
+    <p class="muted">Crée tes propres séances avec les exercices de la bibliothèque. Chaque exercice dure 1 minute, avec 10 secondes de pause entre deux.</p>
+
+    {% if programs %}
+    {% for p in programs %}
+    <article class="card">
+        <h3>{{ p.name }}</h3>
+        <p>
+            <span class="chip">{{ p.duration }}</span>
+            <span class="chip chip-neutral">{{ p.count }} exercice{{ 's' if p.count > 1 else '' }}</span>
+        </p>
+        <p>
+            {% if p.count %}<a class="btn" href="/mobility/programs/{{ p.id }}/play">Lancer</a>{% endif %}
+            <a class="btn btn-secondary" href="/mobility/programs/{{ p.id }}">Modifier</a>
+        </p>
+    </article>
+    {% endfor %}
+    {% else %}
+    <section class="card">
+        <p class="muted">Tu n'as pas encore de programme. Donne-lui un nom, puis ajoute des exercices.</p>
+    </section>
+    {% endif %}
+
+    {% if full %}
+    <p class="muted">Tu as atteint la limite de {{ max_programs }} programmes. Supprime-en un pour en créer un nouveau.</p>
+    {% else %}
+    <form method="post" action="/mobility/programs/create" class="stack">
+        <section class="card">
+            <h3>Nouveau programme</h3>
+            <label class="field"><span>Nom du programme</span>
+                <input type="text" name="name" maxlength="60" placeholder="Ex. Mon réveil hanches" required>
+            </label>
+            <button type="submit">Créer</button>
+        </section>
+    </form>
+    {% endif %}
+
+{% include "_tabbar.html" %}
+</body>
+</html>

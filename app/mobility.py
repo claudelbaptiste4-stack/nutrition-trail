@@ -6,6 +6,7 @@ principale avec deux lignes dans app/main.py (déjà faites à l'étape précéd
 import random
 import re
 import time
+import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Query, Request
@@ -458,6 +459,8 @@ def mobility_play(
             "exercise_seconds": EXERCISE_SECONDS,
             "rest_seconds": REST_SECONDS,
             "duration_text": duration_label(program_seconds(len(chosen))),
+            "back_url": f"/mobility/program/{slug}?min={minutes}&v={v}",
+            "program_id": None,
         },
     )
 
@@ -469,6 +472,12 @@ async def mobility_session_complete(request: Request):
         return RedirectResponse(url="/login", status_code=303)
 
     form = await request.form()
+
+    # Séance d'un programme personnalisé
+    program_id = str(form.get("program_id") or "")
+    if program_id:
+        return await complete_custom_session(user_id, program_id, form)
+
     slug = str(form.get("slug") or "")
     program = find_program(slug)
     if program is None:
@@ -479,7 +488,7 @@ async def mobility_session_complete(request: Request):
     except ValueError:
         minutes = DEFAULT_MINUTES
     known = {ex["id"] for ex in load_catalogue()["exercises"]}
-    ids = [i for i in str(form.get("exercise_ids") or "").split(",") if i in known][:30]
+    ids = list(dict.fromkeys(i for i in str(form.get("exercise_ids") or "").split(",") if i in known))[:30]
 
     if ids:
         session = (
@@ -501,6 +510,45 @@ async def mobility_session_complete(request: Request):
         ]
         supabase.table("mobility_session_items").insert(items).execute()
     return RedirectResponse(url=f"/mobility/program/{slug}?min={minutes}&done=1", status_code=303)
+
+
+async def complete_custom_session(user_id, program_id, form):
+    """Enregistre la séance d'un programme personnalisé (uniquement avec les exercices de ce programme)."""
+    try:
+        uuid.UUID(program_id)
+    except ValueError:
+        return RedirectResponse(url="/mobility/programs", status_code=303)
+    owned = (
+        supabase.table("mobility_programs").select("id")
+        .eq("id", program_id).eq("user_id", user_id).execute().data
+    )
+    if not owned:
+        return RedirectResponse(url="/mobility/programs", status_code=303)
+
+    rows = supabase.table("mobility_program_items").select("exercise_id").eq("program_id", program_id).execute().data
+    allowed = {r["exercise_id"] for r in rows}
+    ids = list(dict.fromkeys(i for i in str(form.get("exercise_ids") or "").split(",") if i in allowed))[:30]
+    if ids:
+        session = (
+            supabase.table("mobility_sessions")
+            .insert({
+                "user_id": user_id,
+                "source": "programme",
+                "program_id": program_id,
+                "moment": "perso",
+                "planned_seconds": program_seconds(len(ids)),
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .execute()
+            .data[0]
+        )
+        items = [
+            {"session_id": session["id"], "position": n, "exercise_id": ex_id,
+             "planned_seconds": EXERCISE_SECONDS, "completed": True}
+            for n, ex_id in enumerate(ids, 1)
+        ]
+        supabase.table("mobility_session_items").insert(items).execute()
+    return RedirectResponse(url=f"/mobility/programs/{program_id}?done=1", status_code=303)
 
 
 @router.get("/mobility/test")
