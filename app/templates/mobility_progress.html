@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Progression · PeakFlex</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+    <p><a href="/mobility">← Mobilité</a></p>
+    <p class="eyebrow">Mobilité</p>
+    <h1>Ma progression</h1>
+
+    <!-- Score au fil des tests -->
+    {% if latest %}
+    <section class="card">
+        <p class="muted">Score moyen · dernier test le {{ latest_date }}</p>
+        <p class="score-big">{{ latest.global_score|round|int }}<span>/100</span>
+            {% if global_delta is not none %}
+            <span class="delta delta-{{ global_trend }}">
+                {% if global_trend == 'up' %}↑ +{{ global_delta|round|int }}{% elif global_trend == 'down' %}↓ {{ global_delta|round|int }}{% else %}→ stable{% endif %}
+            </span>
+            {% endif %}
+        </p>
+        {% if global_delta is not none %}
+        <p class="muted">Par rapport à ton test précédent. En dessous de {{ stable_band }} points d'écart, on parle de « stable » : une mesure faite seul varie un peu d'un jour à l'autre.</p>
+        {% endif %}
+
+        {% if assessments_count >= 2 %}
+        <svg class="chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Évolution du score moyen sur {{ assessments_count }} tests">
+            {% for g in chart.grid %}
+            <line class="chart-grid" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ g.y }}" y2="{{ g.y }}"/>
+            <text class="chart-label" x="{{ chart.left - 6 }}" y="{{ g.y + 3 }}" text-anchor="end">{{ g.value }}</text>
+            {% endfor %}
+            <polyline class="chart-line" points="{{ chart.polyline }}"/>
+            {% for p in chart.points %}
+            <circle class="chart-dot" cx="{{ p.x }}" cy="{{ p.y }}" r="4"/>
+            {% endfor %}
+            <text class="chart-label" x="{{ chart.points[0].x }}" y="{{ chart.label_y }}" text-anchor="start">{{ chart.points[0].label }}</text>
+            <text class="chart-label" x="{{ chart.points[-1].x }}" y="{{ chart.label_y }}" text-anchor="end">{{ chart.points[-1].label }}</text>
+        </svg>
+        {% else %}
+        <p class="muted">Refais le test dans quelques semaines : la courbe apparaîtra à partir du deuxième test.</p>
+        {% endif %}
+    </section>
+
+    <!-- Rappel du prochain test -->
+    {% if retest %}
+    <section class="card">
+        {% if retest.due %}
+        <p class="notice-line">Ton dernier test date de {{ retest.weeks }} semaines : il est conseillé de le refaire toutes les 6 semaines.</p>
+        <a class="btn" href="/mobility/test">Refaire le test</a>
+        {% else %}
+        <p class="muted">Prochain test conseillé vers le {{ retest.next_date }} (toutes les 6 semaines environ).</p>
+        <a class="btn btn-secondary" href="/mobility/test">Refaire le test maintenant</a>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- Évolution par zone -->
+    {% if zones %}
+    <h2>Évolution par zone</h2>
+    <p class="muted">Comparaison entre ton premier test et le dernier.</p>
+    <section class="card">
+        <div class="zone-compare">
+            {% for z in zones %}
+            <span class="zone-name">{{ z.name }}</span>
+            <span class="muted">{% if z.before is not none %}{{ z.before }}{% else %}—{% endif %} → {% if z.after is not none %}{{ z.after }}{% else %}—{% endif %}</span>
+            <span class="delta delta-{{ z.trend }}">
+                {% if z.trend == 'up' %}↑ +{{ z.delta|round|int }}{% elif z.trend == 'down' %}↓ {{ z.delta|round|int }}{% elif z.trend == 'stable' %}→ stable{% else %}—{% endif %}
+            </span>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+    {% else %}
+    <section class="card">
+        <p class="eyebrow">Première étape</p>
+        <h3>Fais ton premier test</h3>
+        <p class="muted">Ta progression apparaîtra ici : l'évolution de ton score entre deux tests, zone par zone.</p>
+        <a class="btn" href="/mobility/test">Faire le test</a>
+    </section>
+    {% endif %}
+
+    <!-- Régularité -->
+    <h2>Régularité</h2>
+    <div class="stat-grid">
+        <div class="stat"><strong>{{ last7 }}</strong><span>séance{{ 's' if last7 > 1 else '' }} sur 7 jours</span></div>
+        <div class="stat"><strong>{{ last30 }}</strong><span>séance{{ 's' if last30 > 1 else '' }} sur 30 jours</span></div>
+        <div class="stat"><strong>{{ total_sessions }}</strong><span>séance{{ 's' if total_sessions > 1 else '' }} au total</span></div>
+    </div>
+
+    {% if total_sessions %}
+    <section class="card">
+        <p class="eyebrow">Séances par semaine</p>
+        <div class="week-bars" role="img" aria-label="Nombre de séances par semaine sur les {{ weeks|length }} dernières semaines">
+            {% for w in weeks %}
+            <div class="week-col">
+                {% if w.count %}<span class="week-count">{{ w.count }}</span>{% endif %}
+                <div class="week-bar {{ '' if w.count else 'week-bar-empty' }}" style="height: {{ w.height }}%"></div>
+                <span>{{ w.label }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="muted">Chaque colonne correspond à une semaine, indiquée par son lundi.</p>
+    </section>
+
+    <h2>Dernières séances</h2>
+    <section class="card">
+        {% for s in recent %}
+        <div class="zone-row">
+            <div class="zone-head">
+                <span class="zone-name">{{ s.title }}</span>
+                <span class="muted">{{ s.date }}</span>
+            </div>
+            {% if s.duration %}<p class="muted zone-note">{{ s.duration }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </section>
+    {% else %}
+    <section class="card">
+        <p class="muted">Aucune séance enregistrée pour l'instant. Lance un programme et va jusqu'au bout : il apparaîtra ici.</p>
+        <a class="btn" href="/mobility">Voir les programmes</a>
+    </section>
+    {% endif %}
+
+{% include "_tabbar.html" %}
+</body>
+</html>

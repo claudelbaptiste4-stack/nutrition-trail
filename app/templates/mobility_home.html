@@ -17,7 +17,14 @@
         <p class="score-big">{{ global_score|round|int }}<span>/100</span></p>
         <div class="bar"><span class="level-{{ global_level }}" style="width: {{ global_score|round|int }}%"></span></div>
         <p class="muted">{{ global_label }}</p>
+        {% if retest and retest.due %}
+        <p class="notice-line">Ton dernier test date de {{ retest.weeks }} semaines : il est conseillé de le refaire toutes les 6 semaines pour suivre ta progression.</p>
+        <a class="btn" href="/mobility/test">Refaire le test</a>
+        {% else %}
+        {% if retest %}<p class="muted">Prochain test conseillé vers le {{ retest.next_date }}.</p>{% endif %}
         <a class="btn btn-secondary" href="/mobility/test">Refaire le test</a>
+        {% endif %}
+        <a class="btn btn-secondary" href="/mobility/progress">Ma progression</a>
     </section>
 
     <h2>Détail par zone</h2>

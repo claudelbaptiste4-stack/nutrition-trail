@@ -7,7 +7,7 @@ import random
 import re
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
@@ -30,6 +30,7 @@ CACHE_SECONDS = 300           # le catalogue est relu toutes les 5 minutes au pl
 MAX_PER_ZONE = 1              # un seul exercice par zone (muscle) dans un programme ; assoupli seulement s'il manque d'exercices
 RECENT_SESSIONS = 3           # les exercices des 3 dernières séances d'un programme passent en dernier
 ASYMMETRY_ALERT = 15          # écart gauche-droite (en points) à signaler
+RETEST_DAYS = 42              # refaire le test environ toutes les 6 semaines pour suivre la progression
 
 PROGRAMS = [
     {"slug": "matin", "title": "Mobilité du matin", "eyebrow": "Matin",
@@ -115,6 +116,29 @@ def to_float(value):
         return float(value)
     except ValueError:
         return None
+
+
+def parse_iso(text):
+    """Lit une date renvoyée par Supabase ('2026-10-15T10:00:00.123+00:00') ; None si illisible."""
+    try:
+        when = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def retest_info(taken_at):
+    """Jours écoulés depuis le dernier test, et date conseillée du prochain."""
+    when = parse_iso(taken_at)
+    if when is None:
+        return None
+    days = (datetime.now(timezone.utc) - when).days
+    return {
+        "days": days,
+        "weeks": days // 7,
+        "due": days >= RETEST_DAYS,
+        "next_date": (when + timedelta(days=RETEST_DAYS)).strftime("%d/%m/%Y"),
+    }
 
 
 def format_date(iso_text):
@@ -373,6 +397,7 @@ def mobility_home(request: Request):
             "zones": zones,
             "programs": programs,
             "asymmetry_alert": ASYMMETRY_ALERT,
+            "retest": retest_info(assessment["taken_at"]) if assessment else None,
         },
     )
 
